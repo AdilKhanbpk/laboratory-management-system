@@ -69,4 +69,5 @@ export type {
   DevCurrentDynamicKeyResult,
   InspectBackupInput,
   ExecuteRestoreInput,
+  RestoreFromBackupInput,
 } from '../../electron/types/ipc';

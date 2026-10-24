@@ -5,6 +5,7 @@ import type {
   LoginInput,
   UnlockInput,
   RestoreKeyInput,
+  RestoreFromBackupInput,
   UpdateHospitalSettingsInput,
   CreatePatientInput,
   UpdatePatientInput,
@@ -25,6 +26,7 @@ const CHANNELS = {
   AUTH_UNLOCK: 'auth:unlock',
   AUTH_GET_RECOVERY_KEY: 'auth:get-recovery-key',
   AUTH_RESTORE_KEY: 'auth:restore-key',
+  AUTH_RESTORE_FROM_BACKUP: 'auth:restore-from-backup',
 
   // Users
   USERS_LIST: 'users:list',
@@ -120,6 +122,7 @@ const api: ElectronAPI = {
     unlock: (input: UnlockInput) => ipcRenderer.invoke(CHANNELS.AUTH_UNLOCK, input),
     getRecoveryKey: () => ipcRenderer.invoke(CHANNELS.AUTH_GET_RECOVERY_KEY),
     restoreWithKey: (input: RestoreKeyInput) => ipcRenderer.invoke(CHANNELS.AUTH_RESTORE_KEY, input),
+    restoreFromBackup: (input: RestoreFromBackupInput) => ipcRenderer.invoke(CHANNELS.AUTH_RESTORE_FROM_BACKUP, input),
   },
   users: {
     list: () => ipcRenderer.invoke(CHANNELS.USERS_LIST),

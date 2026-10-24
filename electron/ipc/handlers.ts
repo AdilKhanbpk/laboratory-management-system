@@ -7,6 +7,7 @@ import {
   LoginSchema,
   UnlockSchema,
   RestoreKeySchema,
+  RestoreFromBackupSchema,
   UpdateHospitalSettingsSchema,
   CreateUserSchema,
   UpdateUserSchema,
@@ -383,6 +384,85 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       return { success: true, data: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to decrypt database with this recovery key.' };
+    }
+  });
+
+  // 8b. Restore & Setup Database from USB/Backup using 100-digit dynamic hourly key
+  ipcMain.handle(IPC_CHANNELS.AUTH_RESTORE_FROM_BACKUP, async (_, rawInput: unknown): Promise<IpcResponse<boolean>> => {
+    try {
+      const parsed = RestoreFromBackupSchema.safeParse(rawInput);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid parameters.' };
+      }
+
+      const { dbBackupPath, dynamicKey } = parsed.data;
+
+      // 1. Verify 100-digit hourly dynamic authorization key
+      const keyValidation = validateDynamicHourlyKey(dynamicKey);
+      if (!keyValidation.valid) {
+        return {
+          success: false,
+          error: keyValidation.error || 'Invalid or expired 100-digit dynamic authorization key. Please use current hour key.',
+        };
+      }
+
+      if (!fs.existsSync(dbBackupPath)) {
+        return { success: false, error: 'Selected database backup file does not exist.' };
+      }
+
+      const userDataPath = app.getPath('userData');
+      const activeDbPath = path.join(userDataPath, 'lms_secure.db');
+
+      // 2. Retrieve or initialize the master key sealed in DPAPI vault
+      const masterKey = ctx.keyManager.getOrCreateDatabaseKey();
+
+      // 3. Pre-flight verification: test opening the candidate backup database
+      const tempManager = new DatabaseManager({
+        dbPath: dbBackupPath,
+        encryptionKey: masterKey,
+      });
+
+      try {
+        tempManager.open();
+        const integrity = tempManager.checkIntegrity();
+        if (!integrity.ok) {
+          throw new Error('Database integrity check failed.');
+        }
+      } catch (err: any) {
+        tempManager.close();
+        return {
+          success: false,
+          error: `The selected database file cannot be verified or decrypted: ${err?.message || 'Decryption error'}`,
+        };
+      } finally {
+        tempManager.close();
+      }
+
+      // 4. Close current active DB connection, copy backup to active database file
+      ctx.dbManager.close();
+      fs.copyFileSync(dbBackupPath, activeDbPath);
+
+      // 5. Reconfigure with active database and run pending migrations
+      ctx.dbManager.reconfigure({
+        dbPath: activeDbPath,
+        encryptionKey: masterKey,
+      });
+      ctx.dbManager.open();
+      ctx.migrationRunner.runPendingMigrations();
+
+      // 6. Audit log entry
+      ctx.auditRepo.logAction({
+        action: 'MIGRATION_RESTORE_SUCCESS',
+        entityType: 'SYSTEM',
+        details: {
+          sourcePath: dbBackupPath,
+          restoredAt: new Date().toISOString(),
+        },
+      });
+
+      return { success: true, data: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Database restoration from backup failed.' };
     }
   });
 

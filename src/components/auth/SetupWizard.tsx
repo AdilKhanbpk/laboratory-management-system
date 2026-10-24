@@ -17,6 +17,8 @@ import {
   Activity,
   KeyRound,
   FolderOpen,
+  FolderDown,
+  ClipboardPaste,
   ShieldAlert,
 } from 'lucide-react';
 
@@ -29,8 +31,8 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Migration / Recovery State
-  const [recoveryCode, setRecoveryCode] = useState('');
+  // Migration / Backup Restore State
+  const [dynamicKey, setDynamicKey] = useState('');
   const [migrationBackupPath, setMigrationBackupPath] = useState<string | null>(null);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationError, setMigrationError] = useState<string | null>(null);
@@ -87,11 +89,23 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
     }
   };
 
+  const handlePasteDynamicKey = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) setDynamicKey(text.trim());
+    } catch (err) {
+      console.error('Clipboard paste failed:', err);
+    }
+  };
+
   const handleExecuteMigration = async (e: React.FormEvent) => {
     e.preventDefault();
-    const sanitized = recoveryCode.replace(/[^a-fA-F0-9]/g, '');
-    if (sanitized.length !== 64) {
-      setMigrationError('Emergency Recovery Key must be 64 hexadecimal characters (e.g. 7461-618A-6415-...).');
+    if (!migrationBackupPath) {
+      setMigrationError('Pehle USB ya disk se database backup file (.db) select karein.');
+      return;
+    }
+    if (!dynamicKey.trim()) {
+      setMigrationError('Current hour 100-digit dynamic authorization key lazmi hai.');
       return;
     }
 
@@ -99,13 +113,13 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
     setMigrationError(null);
 
     try {
-      const res = await window.electronAPI.auth.restoreWithKey({
-        recoveryKey: recoveryCode.trim(),
-        dbBackupPath: migrationBackupPath || undefined,
+      const res = await window.electronAPI.auth.restoreFromBackup({
+        dbBackupPath: migrationBackupPath,
+        dynamicKey: dynamicKey.trim(),
       });
 
       if (!res.success) {
-        setMigrationError(res.error || 'Failed to decrypt database with this key.');
+        setMigrationError(res.error || 'Failed to decrypt database with this dynamic key.');
         setIsMigrating(false);
         return;
       }
@@ -216,12 +230,12 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
           <div className="space-y-4">
             <div>
               <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
-                {setupMode === 'fresh' ? 'Facility & Operator Setup' : 'Restore from Backup / Migrate PC'}
+                {setupMode === 'fresh' ? 'Facility & Operator Setup' : 'Restore Database from USB / Backup'}
               </h2>
               <p className="text-xs text-slate-600 mt-1">
                 {setupMode === 'fresh'
                   ? 'Configure your laboratory identity and master administrator login credentials to initialize a new local database.'
-                  : 'Restore your existing encrypted laboratory database and bind it to this Windows PC using your Emergency Recovery Key.'}
+                  : 'Naye computer par purani USB ya backup file (.db) se lab ka record foran chalaein (100-digit security key ke zariye).'}
               </p>
             </div>
 
@@ -244,12 +258,12 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
                 onClick={() => setSetupMode('migrate')}
                 className={`flex-1 py-2 px-3 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
                   setupMode === 'migrate'
-                    ? 'bg-white text-brand-700 shadow-sm'
+                    ? 'bg-white text-emerald-700 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <KeyRound className="w-4 h-4 text-amber-600" />
-                Migrate / Enter Recovery Key
+                <FolderDown className="w-4 h-4 text-emerald-600" />
+                Restore from USB / Backup
               </button>
             </div>
           </div>
@@ -434,7 +448,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
             </>
           ) : (
             /* ============================================================== */
-            /* MIGRATION & EMERGENCY KEY RESTORE MODE                         */
+            /* RESTORE FROM BACKUP / USB MODE (100-Digit Key)                 */
             /* ============================================================== */
             <div className="space-y-6">
               {migrationError && (
@@ -444,64 +458,33 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
               )}
 
               {migrationSuccess && (
-                <Alert type="success" title="Workstation Unlocked & Bound Successfully!">
-                  The encrypted database has been verified and bound to this computer's Windows DPAPI vault. Opening laboratory workspace...
+                <Alert type="success" title="Database Restored & Initialized Successfully!">
+                  Aapka laboratory database kamyabi se restore ho gaya hai aur is computer par lock ho chuka hai. Opening laboratory workspace...
                 </Alert>
               )}
 
               <form onSubmit={handleExecuteMigration} className="space-y-6">
-                <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-8 shadow-sm space-y-6">
-                  <div className="flex items-center gap-2.5 pb-4 border-b border-slate-100 text-slate-900 font-bold text-sm">
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                      <KeyRound className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">Emergency Recovery Key (64-Character Hex)</h3>
-                      <p className="text-xs font-normal text-slate-500">
-                        Paste the Emergency Recovery Code from your previous computer
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold text-slate-700">
-                      Emergency Recovery Key Code <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={recoveryCode}
-                      onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
-                      placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
-                      className="w-full px-3.5 py-3 rounded-xl border border-slate-300 font-mono text-sm tracking-wider uppercase text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-amber-50/30"
-                    />
-                    <p className="text-[11px] text-slate-500">
-                      Format: 16 groups of 4 hex characters separated by hyphens (e.g.{' '}
-                      <code className="text-amber-700 font-mono">7461-618A-6415-1EFC-...</code>)
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-8 shadow-sm space-y-6">
+                {/* Step 1: File Selection */}
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-8 shadow-sm space-y-4">
                   <div className="flex items-center gap-2.5 pb-4 border-b border-slate-100 text-slate-900 font-bold text-sm">
                     <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
                       <Database className="w-4 h-4" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-900">Database File Source</h3>
+                      <h3 className="text-sm font-bold text-slate-900">Step 1: Select Database Backup File (USB ya Drive se)</h3>
                       <p className="text-xs font-normal text-slate-500">
-                        Select a backup file (.bak / .db) from USB drive or local disk
+                        Apni USB drive ya computer se database backup file (.db) select karein
                       </p>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     <div className="flex items-center gap-3">
                       <input
                         type="text"
                         readOnly
                         value={migrationBackupPath || ''}
-                        placeholder="No external file chosen (default AppData database will be used if present)"
+                        placeholder="No file chosen yet... Click 'Browse File' to select your USB backup"
                         className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-xs font-mono text-slate-700 truncate"
                       />
                       <Button
@@ -511,23 +494,60 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
                         className="shrink-0 flex items-center gap-1.5 text-xs py-2.5"
                       >
                         <FolderOpen className="w-4 h-4 text-slate-600" />
-                        Browse File (.bak / .db)
+                        Browse File (.db)
                       </Button>
                     </div>
                     <p className="text-[11px] text-slate-500 leading-relaxed">
-                      If you have a <code className="text-slate-700 font-mono">.bak</code> backup file on a USB flash drive or external drive, click <strong>Browse File</strong> to select it.
-                      If you already manually placed <code className="text-slate-700 font-mono">lms_secure.db</code> in the AppData directory, leave this blank.
+                      Pehle computer se banayi gayi backup file (maslan <code className="text-slate-700 font-mono">lms_backup_...db</code>) ko select karein.
                     </p>
                   </div>
                 </div>
 
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-xs text-amber-800">
-                  <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                  <div>
-                    <h5 className="font-bold text-amber-900 mb-0.5">How Computer Migration Works:</h5>
-                    <p className="leading-relaxed">
-                      When you click <strong>Unlock Database & Bind to this PC</strong>, this application uses your 64-character master key to decrypt the database, and immediately creates a brand-new <code className="font-mono">vault.enc</code> file sealed with this Windows computer's DPAPI credentials.
-                    </p>
+                {/* Step 2: 100-Digit Dynamic Hourly Security Key */}
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-8 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5 text-slate-900 font-bold text-sm">
+                      <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <KeyRound className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900">Step 2: Current Hour Dynamic Key (100 Digits)</h3>
+                        <p className="text-xs font-normal text-slate-500">
+                          Date aur current hour par mabni 100-character code darj karein
+                        </p>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handlePasteDynamicKey}
+                      className="text-xs h-7 px-2.5 shrink-0"
+                    >
+                      <ClipboardPaste className="w-3.5 h-3.5 mr-1.5 text-slate-600" />
+                      Paste from Clipboard
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      100-Digit Dynamic Key Code <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={dynamicKey}
+                      onChange={(e) => setDynamicKey(e.target.value.trim())}
+                      placeholder="Paste 100-digit dynamic hourly key here..."
+                      className="w-full px-3.5 py-3 rounded-xl border border-slate-300 font-mono text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-amber-50/20 placeholder:text-slate-400"
+                    />
+                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                      <span>Key length: {dynamicKey.length} / 100 characters</span>
+                      <span className="text-amber-800 font-medium">
+                        Tip: Current hour ka code Developer Portal se copy kar sakte hain
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -535,12 +555,12 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
                   <Button
                     type="submit"
                     size="lg"
-                    className="w-full py-4 text-base shadow-lg shadow-amber-500/25 bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                    className="w-full py-4 text-base shadow-lg shadow-emerald-500/25 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                     isLoading={isMigrating}
-                    disabled={migrationSuccess}
+                    disabled={migrationSuccess || !migrationBackupPath || !dynamicKey.trim()}
                   >
-                    <KeyRound className="w-5 h-5 mr-2" />
-                    Unlock Database & Bind to this PC
+                    <FolderDown className="w-5 h-5 mr-2" />
+                    Restore Database & Open System (ڈیٹا بحال کریں اور سسٹم شروع کریں)
                   </Button>
                 </div>
               </form>

@@ -8,6 +8,7 @@ export const IPC_CHANNELS = {
   AUTH_UNLOCK: 'auth:unlock',
   AUTH_GET_RECOVERY_KEY: 'auth:get-recovery-key',
   AUTH_RESTORE_KEY: 'auth:restore-key',
+  AUTH_RESTORE_FROM_BACKUP: 'auth:restore-from-backup',
 
   // Users Management & RBAC
   USERS_LIST: 'users:list',

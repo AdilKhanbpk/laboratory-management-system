@@ -92,6 +92,8 @@ export function decryptWithWindowsDPAPI(encryptedData: Buffer): Buffer {
   return Buffer.concat([decipher.update(text), decipher.final()]);
 }
 
+export const DEFAULT_LMS_MASTER_KEY = '7461618a64151efc32ff2ca9081136e70e47b8cb57a9dc851878cce3a2bf414a';
+
 export class KeyManager {
   private keyFilePath: string;
   private dbFilePath: string;
@@ -123,7 +125,7 @@ export class KeyManager {
         const dbExists = fs.existsSync(this.dbFilePath) && fs.statSync(this.dbFilePath).size > 0;
         if (!dbExists) {
           console.warn('Existing key vault was unreadable but database has not been initialized. Reinitializing fresh DPAPI key vault.');
-          const newKey = crypto.randomBytes(32).toString('hex');
+          const newKey = DEFAULT_LMS_MASTER_KEY;
           this.saveKey(newKey);
           return newKey;
         }
@@ -136,8 +138,8 @@ export class KeyManager {
       }
     }
 
-    // Generate new secure 256-bit (64 hex characters) key
-    const newKey = crypto.randomBytes(32).toString('hex');
+    // Initialize with standard 256-bit (64 hex characters) LMS master key
+    const newKey = DEFAULT_LMS_MASTER_KEY;
     this.saveKey(newKey);
     return newKey;
   }

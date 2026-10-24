@@ -30,12 +30,8 @@ import {
 } from 'lucide-react';
 
 export const BackupRestoreView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'backup' | 'archives' | 'recovery'>('backup');
+  const [activeTab, setActiveTab] = useState<'backup' | 'archives'>('backup');
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
-
-  // Recovery Key State
-  const [workstationRecoveryKey, setWorkstationRecoveryKey] = useState<string | null>(null);
-  const [isCopied, setIsCopied] = useState(false);
 
   // Backup State
   const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
@@ -74,12 +70,6 @@ export const BackupRestoreView: React.FC = () => {
       }
     });
 
-    window.electronAPI.auth.getRecoveryKey().then((res) => {
-      if (res.success && res.data) {
-        setWorkstationRecoveryKey(res.data);
-      }
-    });
-
     // Check if a default backup path is persistently saved in hospital settings
     window.electronAPI.settings.getHospital().then((res) => {
       if (res.success && res.data?.default_backup_path) {
@@ -91,14 +81,6 @@ export const BackupRestoreView: React.FC = () => {
       }
     });
   }, [fetchLocalBackups]);
-
-  const handleCopyKey = () => {
-    if (workstationRecoveryKey) {
-      navigator.clipboard.writeText(workstationRecoveryKey);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2500);
-    }
-  };
 
   // Handle Destination Selection & Persist as Permanent Default
   const handleSelectDestination = async () => {
@@ -235,18 +217,6 @@ export const BackupRestoreView: React.FC = () => {
             <Archive className="w-4 h-4" />
             Saved Backups History ({localBackups.length} فائلیں)
           </button>
-
-          <button
-            onClick={() => setActiveTab('recovery')}
-            className={`pb-3 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'recovery'
-                ? 'border-amber-600 text-amber-600'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <KeyRound className="w-4 h-4 text-amber-600" />
-            New PC Migration (نیا کمپیوٹر کوڈ)
-          </button>
         </div>
       </div>
 
@@ -298,34 +268,6 @@ export const BackupRestoreView: React.FC = () => {
                 <span className="font-semibold text-slate-800 mt-0.5 block">Air-Gapped Offline Local</span>
               </div>
             </div>
-
-            {workstationRecoveryKey && (
-              <div className="mt-4 p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg shrink-0">
-                    <KeyRound className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-amber-900 block">New Computer Recovery Code (نیا کمپیوٹر کوڈ)</span>
-                    <span className="text-[11px] text-amber-700">Agar aap ye data kisi doosray computer par shift karna chahein, to wahan ye code darkaar hoga.</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 self-start md:self-auto">
-                  <code className="text-xs font-mono font-bold bg-white px-2.5 py-1 rounded-lg border border-amber-300 text-amber-900 truncate max-w-xs sm:max-w-none">
-                    {workstationRecoveryKey}
-                  </code>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleCopyKey}
-                    className="text-xs h-7 px-2.5 bg-white border-amber-300 text-amber-800 hover:bg-amber-100 shrink-0"
-                  >
-                    {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600 mr-1" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
-                    {isCopied ? 'Copied' : 'Copy Code'}
-                  </Button>
-                </div>
-              </div>
-            )}
           </Card>
 
           {/* Backup Action Card */}
@@ -617,107 +559,6 @@ export const BackupRestoreView: React.FC = () => {
             </table>
           </div>
         </Card>
-      )}
-
-      {/* ============================================================== */}
-      {/* TAB 3: EMERGENCY RECOVERY KEY & PC MIGRATION                   */}
-      {/* ============================================================== */}
-      {activeTab === 'recovery' && (
-        <div className="space-y-6">
-          {/* Recovery Key Display Card */}
-          <Card className="p-6 bg-white border-slate-200 shadow-sm space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
-                  <KeyRound className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">Workstation Emergency Recovery Key</h2>
-                  <p className="text-xs text-slate-500">64-Character 256-Bit Cryptographic Master Key Phrase</p>
-                </div>
-              </div>
-              <Badge variant="warning" className="text-xs py-1 px-3 self-start sm:self-auto">
-                Confidential Medical Key
-              </Badge>
-            </div>
-
-            <div className="p-5 bg-slate-950 rounded-2xl text-white shadow-xl space-y-4">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span className="font-mono">CRYPTO_KEY_ALGORITHM: AES-256-CBC / DPAPI_BOUND</span>
-                <span>Air-Gapped Offline Protection</span>
-              </div>
-
-              <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl font-mono text-base sm:text-lg tracking-wider text-amber-400 font-bold select-all break-all text-center">
-                {workstationRecoveryKey || 'Loading recovery key from secure vault...'}
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                <p className="text-[11px] text-slate-400 leading-snug">
-                  Keep this emergency code written down in a secure physical location (e.g. laboratory safe or administrator journal).
-                </p>
-                <Button
-                  size="sm"
-                  onClick={handleCopyKey}
-                  disabled={!workstationRecoveryKey}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs py-2 px-4 shrink-0 shadow-lg shadow-amber-600/30"
-                >
-                  {isCopied ? <Check className="w-4 h-4 mr-1.5 text-emerald-300" /> : <Copy className="w-4 h-4 mr-1.5" />}
-                  {isCopied ? 'Key Copied to Clipboard!' : 'Copy Recovery Code'}
-                </Button>
-              </div>
-            </div>
-          </Card>
-
-          {/* Migration Procedure Guide */}
-          <Card className="p-6 bg-white border-slate-200 shadow-sm space-y-5">
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-brand-600" />
-              How to Migrate Database to Another Computer (Dusray Computer Par Data Chalane Ka Tareeqa)
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-                <div className="flex items-center gap-2 font-bold text-slate-900">
-                  <span className="w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center text-[10px]">1</span>
-                  PC A (Current Computer) Par Backup Banayein
-                </div>
-                <p className="text-slate-600 leading-relaxed">
-                  Is screen par <strong>Create Backup</strong> tab me jayein aur backup file ko USB flash drive ya external drive me save karein.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-                <div className="flex items-center gap-2 font-bold text-slate-900">
-                  <span className="w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center text-[10px]">2</span>
-                  Apna Recovery Code Note Karein
-                </div>
-                <p className="text-slate-600 leading-relaxed">
-                  Upar diya gaya 64-character Recovery Code copy karein ya kisi safe jagah note karein.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-                <div className="flex items-center gap-2 font-bold text-slate-900">
-                  <span className="w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center text-[10px]">3</span>
-                  Naye Computer (PC B) Par LMS Open Karein
-                </div>
-                <p className="text-slate-600 leading-relaxed">
-                  Naye computer par application install karein aur pehli dafa open karein. Setup Wizard screen show hogi.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-                <div className="flex items-center gap-2 font-bold text-slate-900">
-                  <span className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center text-[10px]">4</span>
-                  "Migrate / Enter Recovery Key" Tab Select Karein
-                </div>
-                <p className="text-slate-600 leading-relaxed">
-                  Setup screen par <strong>Migrate / Enter Recovery Key</strong> par click karein. Apna ye code paste karein aur USB se backup file select kar k <strong>Unlock Database</strong> dabayein!
-                </p>
-              </div>
-            </div>
-          </Card>
-        </div>
       )}
     </div>
   );

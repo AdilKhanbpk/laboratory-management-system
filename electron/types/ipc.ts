@@ -61,6 +61,13 @@ export const RestoreKeySchema = z.object({
 
 export type RestoreKeyInput = z.infer<typeof RestoreKeySchema>;
 
+export const RestoreFromBackupSchema = z.object({
+  dbBackupPath: z.string().min(1, 'Database backup file path is required'),
+  dynamicKey: z.string().min(1, 'Dynamic authorization key is required'),
+});
+
+export type RestoreFromBackupInput = z.infer<typeof RestoreFromBackupSchema>;
+
 // User Management Schemas
 export const CreateUserSchema = z.object({
   username: z.string().trim().min(3, 'Username must be at least 3 characters').regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
@@ -597,6 +604,7 @@ export interface ElectronAPI {
     unlock: (input: UnlockInput) => Promise<IpcResponse<boolean>>;
     getRecoveryKey: () => Promise<IpcResponse<string>>;
     restoreWithKey: (input: RestoreKeyInput) => Promise<IpcResponse<boolean>>;
+    restoreFromBackup: (input: RestoreFromBackupInput) => Promise<IpcResponse<boolean>>;
   };
   users: {
     list: () => Promise<IpcResponse<SafeUser[]>>;
