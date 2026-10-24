@@ -18,15 +18,8 @@ import {
   Archive,
   RefreshCw,
   FolderUp,
-  KeyRound,
-  Copy,
-  Check,
-  ShieldAlert,
   Trash2,
   Lock,
-  ClipboardPaste,
-  Database,
-  ExternalLink,
 } from 'lucide-react';
 
 export const BackupRestoreView: React.FC = () => {
@@ -36,7 +29,6 @@ export const BackupRestoreView: React.FC = () => {
   // Backup State
   const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
   const [isDefaultSaved, setIsDefaultSaved] = useState(false);
-  const [dynamicKey, setDynamicKey] = useState('');
   const [deletePrevious, setDeletePrevious] = useState(false);
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
   const [backupResult, setBackupResult] = useState<BackupResult | null>(null);
@@ -114,25 +106,8 @@ export const BackupRestoreView: React.FC = () => {
     }
   };
 
-  // Paste dynamic key from clipboard
-  const handlePasteDynamicKey = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        setDynamicKey(text.trim());
-      }
-    } catch (err) {
-      console.error('Clipboard paste failed:', err);
-    }
-  };
-
   // Handle Create Backup Execution
   const handleCreateBackup = async () => {
-    if (!dynamicKey.trim()) {
-      setBackupError('Dynamic Authorization Key darj karna lazmi hai. Developer Portal se current hour key copy karein.');
-      return;
-    }
-
     setIsCreatingBackup(true);
     setBackupError(null);
     setBackupResult(null);
@@ -141,7 +116,6 @@ export const BackupRestoreView: React.FC = () => {
       const res = await window.electronAPI.backup.create({
         destinationDir: selectedDestination || undefined,
         deletePrevious,
-        dynamicKey: dynamicKey.trim(),
       });
 
       if (res.success && res.data) {
@@ -236,7 +210,7 @@ export const BackupRestoreView: React.FC = () => {
       {activeTab === 'backup' && (
         <div className="space-y-6">
           {/* Active Database Status Card */}
-          <Card className="p-4 bg-white border-slate-200 shadow-sm">
+          {/* <Card className="p-4 bg-white border-slate-200 shadow-sm">
             <h2 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
               Database Status & Security (ڈیٹا کی حفاظت)
@@ -268,7 +242,7 @@ export const BackupRestoreView: React.FC = () => {
                 <span className="font-semibold text-slate-800 mt-0.5 block">Air-Gapped Offline Local</span>
               </div>
             </div>
-          </Card>
+          </Card> */}
 
           {/* Backup Action Card */}
           <Card className="p-6 bg-white border-slate-200 shadow-sm space-y-5">
@@ -331,47 +305,6 @@ export const BackupRestoreView: React.FC = () => {
               )}
             </div>
 
-            {/* Dynamic Hourly Authorization Key Input */}
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <label className="text-xs font-bold text-slate-900 flex items-center gap-2">
-                    <KeyRound className="w-4 h-4 text-brand-600" />
-                    Current Hour Dynamic Security Key (100 Digits) - موجودہ گھنٹے کا کوڈ
-                  </label>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Yeh 100-character code har ghantay tabdeel hota hai. Developer Portal se current hour ka code copy kar ke yahan paste karein.
-                  </p>
-                </div>
-
-                <Button
-                  size="sm"
-                  variant="outline"
-                  type="button"
-                  onClick={handlePasteDynamicKey}
-                  className="text-xs h-7 px-2.5 shrink-0 bg-white"
-                >
-                  <ClipboardPaste className="w-3.5 h-3.5 mr-1.5 text-slate-600" />
-                  Paste from Clipboard
-                </Button>
-              </div>
-
-              <input
-                type="text"
-                value={dynamicKey}
-                onChange={(e) => setDynamicKey(e.target.value)}
-                placeholder="Paste 100-character dynamic authorization key here..."
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500 placeholder:text-slate-400"
-              />
-
-              <div className="flex items-center justify-between text-[11px] text-slate-500">
-                <span>Key length: {dynamicKey.length} / 100 characters</span>
-                <span className="text-slate-400">
-                  Tip: Developer Portal can be opened from bottom-left sidebar ("Clinical Workstation" button)
-                </span>
-              </div>
-            </div>
-
             {/* Delete Previous Backup Checkbox */}
             <label className="flex items-start gap-3 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors">
               <input
@@ -397,7 +330,7 @@ export const BackupRestoreView: React.FC = () => {
                 variant="primary"
                 onClick={handleCreateBackup}
                 isLoading={isCreatingBackup}
-                disabled={isCreatingBackup || !dynamicKey.trim()}
+                disabled={isCreatingBackup}
                 className="bg-brand-600 hover:bg-brand-700 text-xs px-5 py-2.5 font-bold"
               >
                 <Archive className="w-4 h-4 mr-2" />

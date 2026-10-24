@@ -1180,12 +1180,6 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
         return { success: false, error: 'Invalid backup input parameters.' };
       }
 
-      // Check Dynamic Hourly Authorization Key
-      const keyValidation = validateDynamicHourlyKey(parsed.data.dynamicKey);
-      if (!keyValidation.valid) {
-        return { success: false, error: keyValidation.error || 'Invalid or Expired Dynamic Authorization Key.' };
-      }
-
       const hospital = ctx.hospitalRepo.getSettings();
       const destinationDir = parsed.data.destinationDir || hospital?.default_backup_path || undefined;
       const result = await ctx.backupService.createBackup({
