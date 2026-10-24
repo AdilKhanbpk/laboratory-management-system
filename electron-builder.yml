@@ -1,0 +1,39 @@
+appId: com.laboratory.lms
+productName: Offline Laboratory Management System
+copyright: Copyright © 2026 Medical Laboratory Systems
+directories:
+  output: dist-installer
+  buildResources: resources
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - database/migrations/**/*
+  - package.json
+
+asar: true
+asarUnpack:
+  - '**/node_modules/better-sqlite3-multiple-ciphers/**/*'
+
+extraResources:
+  - from: database/migrations
+    to: database/migrations
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: dir
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Offline Laboratory Management System
+  uninstallDisplayName: Offline Laboratory Management System
+  deleteAppDataOnUninstall: false
