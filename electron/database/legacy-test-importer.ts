@@ -174,33 +174,216 @@ function sanitizeTestCode(rawCode: string | null, testName: string, id: number, 
   return candidate;
 }
 
+export interface LegacyReferenceRangeItem {
+  gender: 'all' | 'male' | 'female';
+  minAgeDays: number;
+  maxAgeDays: number;
+  low: number | null;
+  high: number | null;
+  panicLow?: number | null;
+  panicHigh?: number | null;
+  displayText: string;
+}
+
 /**
  * Parses numeric bounds from normal range strings.
+ * Handles '14 --- 16', '4000 - 11000', '< 6.0', '> 10', 'UPTO 20', etc.
  */
-function parseNormalRange(text: string | null): { low: number | null; high: number | null; text: string } {
-  if (!text || typeof text !== 'string') return { low: null, high: null, text: '' };
+export function parseDashNumbers(text: string): { low: number | null; high: number | null } {
+  if (!text || typeof text !== 'string') return { low: null, high: null };
   const clean = text.trim();
-  if (!clean) return { low: null, high: null, text: '' };
+  if (!clean) return { low: null, high: null };
 
-  // Match e.g. '14 --- 16' or '4000 - 11000' or '0.5 to 1.5'
-  const dashMatch = clean.match(/^([0-9]+(?:\.[0-9]+)?)\s*(?:[-–—]+|to)\s*([0-9]+(?:\.[0-9]+)?)$/i);
+  const dashMatch = clean.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:[-–—]+|to)\s*([0-9]+(?:\.[0-9]+)?)/i);
   if (dashMatch) {
-    return { low: parseFloat(dashMatch[1]), high: parseFloat(dashMatch[2]), text: clean };
+    return { low: parseFloat(dashMatch[1]), high: parseFloat(dashMatch[2]) };
   }
 
-  // Match '< 6.0' or '<= 6' or 'UPTO 20' or 'UP TO 20'
-  const upToMatch = clean.match(/^(?:<=?|<|upto|up\s*to)\s*([0-9]+(?:\.[0-9]+)?)$/i);
+  const upToMatch = clean.match(/(?:<=?|<|upto|up\s*to)\s*([0-9]+(?:\.[0-9]+)?)/i);
   if (upToMatch) {
-    return { low: null, high: parseFloat(upToMatch[1]), text: clean };
+    return { low: null, high: parseFloat(upToMatch[1]) };
   }
 
-  // Match '> 10' or '>= 10'
-  const greaterMatch = clean.match(/^(?:>=?|>)\s*([0-9]+(?:\.[0-9]+)?)$/i);
+  const greaterMatch = clean.match(/(?:>=?|>)\s*([0-9]+(?:\.[0-9]+)?)/i);
   if (greaterMatch) {
-    return { low: parseFloat(greaterMatch[1]), high: null, text: clean };
+    return { low: parseFloat(greaterMatch[1]), high: null };
   }
 
-  return { low: null, high: null, text: clean };
+  return { low: null, high: null };
+}
+
+/**
+ * Parses legacy reference ranges into structured demographic rules:
+ * - Male (M) vs Female (F)
+ * - Adult (Ad.) vs Child (Ch.) vs Infant
+ * - Comprehensive dual display text for report presentation (e.g. "M: 13.0 - 17.0   F: 11.5 - 15.5")
+ */
+export function parseLegacyReferenceRanges(
+  paramName: string,
+  rawRange: string | null,
+  testName = '',
+  unit = ''
+): LegacyReferenceRangeItem[] {
+  const pName = (paramName || '').trim().toUpperCase();
+  const tName = (testName || '').trim().toUpperCase();
+  const raw = (rawRange || '').trim();
+
+  // 1. Complete Blood Count (CBC) and Hemoglobin standardization (Pakistani & international clinical standard)
+  const isCbcOrHb =
+    tName.includes('COMPLETE BLOOD') ||
+    tName.includes('CBC') ||
+    tName.includes('HEMOGLUBIN') ||
+    tName === 'HB';
+
+  if (isCbcOrHb || pName === 'HB' || pName === 'HEMOGLUBIN' || pName.startsWith('HEMOGLUBIN (')) {
+    if (pName === 'HB' || pName.includes('HEMOGLUBIN')) {
+      const display = 'M: 13.0 - 17.0   F: 11.5 - 15.5';
+      return [
+        { gender: 'male', minAgeDays: 0, maxAgeDays: 47450, low: 13.0, high: 17.0, panicLow: 7.0, panicHigh: 20.0, displayText: display },
+        { gender: 'female', minAgeDays: 0, maxAgeDays: 47450, low: 11.5, high: 15.5, panicLow: 7.0, panicHigh: 20.0, displayText: display },
+      ];
+    }
+  }
+
+  if (isCbcOrHb) {
+    if (pName === 'RBC' || pName.includes('RED CELLS') || pName.includes('RED BLOOD')) {
+      const display = 'M: 4.5 - 5.5   F: 3.8 - 5.2';
+      return [
+        { gender: 'male', minAgeDays: 0, maxAgeDays: 47450, low: 4.5, high: 5.5, displayText: display },
+        { gender: 'female', minAgeDays: 0, maxAgeDays: 47450, low: 3.8, high: 5.2, displayText: display },
+      ];
+    }
+    if (pName === 'HCT' || pName === 'PCV' || pName.includes('HEMATOCRIT')) {
+      const display = 'M: 40 - 50   F: 35 - 47';
+      return [
+        { gender: 'male', minAgeDays: 0, maxAgeDays: 47450, low: 40.0, high: 50.0, displayText: display },
+        { gender: 'female', minAgeDays: 0, maxAgeDays: 47450, low: 35.0, high: 47.0, displayText: display },
+      ];
+    }
+    if (pName === 'MCV') {
+      const display = 'Ad: 76 - 96   Ch: 80 - 105';
+      return [
+        { gender: 'all', minAgeDays: 6575, maxAgeDays: 47450, low: 76.0, high: 96.0, displayText: display },
+        { gender: 'all', minAgeDays: 0, maxAgeDays: 6574, low: 80.0, high: 105.0, displayText: display },
+      ];
+    }
+    if (pName === 'MCH') {
+      const display = 'Ad: 27 - 32   Ch: 24 - 31';
+      return [
+        { gender: 'all', minAgeDays: 6575, maxAgeDays: 47450, low: 27.0, high: 32.0, displayText: display },
+        { gender: 'all', minAgeDays: 0, maxAgeDays: 6574, low: 24.0, high: 31.0, displayText: display },
+      ];
+    }
+    if (pName === 'MCHC') {
+      const display = 'Ad: 31 - 34   Ch: 28 - 34';
+      return [
+        { gender: 'all', minAgeDays: 6575, maxAgeDays: 47450, low: 31.0, high: 34.0, displayText: display },
+        { gender: 'all', minAgeDays: 0, maxAgeDays: 6574, low: 28.0, high: 34.0, displayText: display },
+      ];
+    }
+    if (pName === 'WBC' || pName === 'TLC' || pName.includes('WHITE BLOOD')) {
+      const parsed = parseDashNumbers(raw || '4.0 - 11.0');
+      const display = raw || '4.0 - 11.0';
+      return [
+        { gender: 'all', minAgeDays: 0, maxAgeDays: 47450, low: parsed.low ?? 4.0, high: parsed.high ?? 11.0, panicLow: 2.0, panicHigh: 30.0, displayText: display },
+      ];
+    }
+    if (pName === 'PLT' || pName.includes('PLATELET')) {
+      const parsed = parseDashNumbers(raw || '150 - 450');
+      const display = raw || '150 - 450';
+      return [
+        { gender: 'all', minAgeDays: 0, maxAgeDays: 47450, low: parsed.low ?? 150.0, high: parsed.high ?? 450.0, panicLow: 50.0, panicHigh: 1000.0, displayText: display },
+      ];
+    }
+  }
+
+  // 2. Multi-line or delimiter check in rawRange (Male/Female, Adult/Child)
+  if (
+    raw &&
+    (raw.includes('\n') ||
+      raw.includes('\r') ||
+      /\b(m:|f:|ad:|ch:|male|female|adult|child|men|women)\b/i.test(raw))
+  ) {
+    const lines = raw.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
+    const parsedLines: Array<{
+      gender: 'all' | 'male' | 'female';
+      minAgeDays: number;
+      maxAgeDays: number;
+      low: number | null;
+      high: number | null;
+      lineText: string;
+    }> = [];
+
+    for (const line of lines) {
+      let gender: 'all' | 'male' | 'female' = 'all';
+      let minAgeDays = 0;
+      let maxAgeDays = 47450;
+
+      if (/\b(male|men)\b/i.test(line) || /^m\s*[:\-]/i.test(line)) {
+        gender = 'male';
+      } else if (/\b(female|women)\b/i.test(line) || /^f\s*[:\-]/i.test(line)) {
+        gender = 'female';
+      }
+
+      if (/\b(adult|adults|ad\.?)\b/i.test(line)) {
+        minAgeDays = 6575;
+        maxAgeDays = 47450;
+      } else if (/\b(child|children|ch\.?)\b/i.test(line)) {
+        minAgeDays = 0;
+        maxAgeDays = 6574;
+      } else if (/\b(newborn|new\s*born|infant)\b/i.test(line)) {
+        minAgeDays = 0;
+        maxAgeDays = 365;
+      }
+
+      const parsed = parseDashNumbers(line);
+      parsedLines.push({
+        gender,
+        minAgeDays,
+        maxAgeDays,
+        low: parsed.low,
+        high: parsed.high,
+        lineText: line.replace(/[\r\n]+/g, ' ').trim(),
+      });
+    }
+
+    if (parsedLines.length > 0) {
+      // Create unified display text if male + female or adult + child
+      const hasMale = parsedLines.some((p) => p.gender === 'male');
+      const hasFemale = parsedLines.some((p) => p.gender === 'female');
+      const hasAdult = parsedLines.some((p) => p.minAgeDays >= 6000);
+      const hasChild = parsedLines.some((p) => p.maxAgeDays < 6600 && p.minAgeDays === 0);
+
+      let sharedDisplay: string | null = null;
+      if (hasMale && hasFemale && parsedLines.length === 2) {
+        sharedDisplay = parsedLines.map((p) => p.lineText).join('   ');
+      } else if (hasAdult && hasChild && parsedLines.length === 2) {
+        sharedDisplay = parsedLines.map((p) => p.lineText).join('   ');
+      }
+
+      return parsedLines.map((p) => ({
+        gender: p.gender,
+        minAgeDays: p.minAgeDays,
+        maxAgeDays: p.maxAgeDays,
+        low: p.low,
+        high: p.high,
+        displayText: sharedDisplay || p.lineText || raw,
+      }));
+    }
+  }
+
+  // 3. Single standard range
+  const parsed = parseDashNumbers(raw);
+  return [
+    {
+      gender: 'all',
+      minAgeDays: 0,
+      maxAgeDays: 47450,
+      low: parsed.low,
+      high: parsed.high,
+      displayText: raw,
+    },
+  ];
 }
 
 /**
@@ -282,7 +465,7 @@ export function importLegacyTestsToActiveDatabase(
     const insertRangeStmt = tx.prepare(`
       INSERT INTO parameter_reference_ranges (
         parameter_id, gender, min_age_days, max_age_days, normal_low, normal_high, panic_low, panic_high, display_text
-      ) VALUES (?, 'all', 0, 47450, ?, ?, null, null, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const t of msTests) {
@@ -315,9 +498,9 @@ export function importLegacyTestsToActiveDatabase(
         subParams.forEach((sp, idx) => {
           const paramName = (sp.Parameter || testName).trim();
           const unit = (sp.Unit || '').trim() || null;
-          const rangeInfo = parseNormalRange(sp.NormalRange);
-          const isNumeric = rangeInfo.low !== null || rangeInfo.high !== null;
-          const paramType = isNumeric ? 'numeric' : (sp.TestResult ? 'text' : 'numeric');
+          const ranges = parseLegacyReferenceRanges(paramName, sp.NormalRange, testName, unit);
+          const hasNumericRange = ranges.some((r) => r.low !== null || r.high !== null);
+          const paramType = hasNumericRange ? 'numeric' : (sp.TestResult ? 'text' : 'numeric');
 
           const pRes = insertParamStmt.run(
             testId,
@@ -330,7 +513,19 @@ export function importLegacyTestsToActiveDatabase(
           const paramId = Number(pRes.lastInsertRowid);
           parametersInserted++;
 
-          insertRangeStmt.run(paramId, rangeInfo.low, rangeInfo.high, rangeInfo.text);
+          for (const r of ranges) {
+            insertRangeStmt.run(
+              paramId,
+              r.gender,
+              r.minAgeDays,
+              r.maxAgeDays,
+              r.low,
+              r.high,
+              r.panicLow ?? null,
+              r.panicHigh ?? null,
+              r.displayText
+            );
+          }
         });
       } else {
         // Single parameter test (e.g. Pleural Fluid, Stone Analysis, High Vaginal Swab C/S)
@@ -338,7 +533,7 @@ export function importLegacyTestsToActiveDatabase(
         const paramId = Number(pRes.lastInsertRowid);
         parametersInserted++;
 
-        insertRangeStmt.run(paramId, null, null, '');
+        insertRangeStmt.run(paramId, 'all', 0, 47450, null, null, null, null, '');
       }
     }
   });
@@ -351,6 +546,41 @@ export function importLegacyTestsToActiveDatabase(
     parametersInserted,
     departmentsFound: depts.length,
   };
+}
+
+/**
+ * Wipes all transactional data (patients, doctors, visits, orders, results, invoices, payments, audit logs)
+ * AND all tests, parameters, and reference ranges from the active database.
+ * Leaves app_users and hospital_settings intact.
+ */
+export function wipeAllDatabaseData(dbManager: DatabaseManager): { deletedTests: number; deletedParams: number; deletedVisits: number } {
+  return dbManager.runTransaction((tx) => {
+    const testCount = tx.prepare('SELECT count(*) as c FROM lab_tests').get().c;
+    const paramCount = tx.prepare('SELECT count(*) as c FROM test_parameters').get().c;
+    const visitCount = tx.prepare('SELECT count(*) as c FROM visits').get().c;
+
+    tx.prepare('DELETE FROM audit_logs').run();
+    tx.prepare('DELETE FROM test_results').run();
+    tx.prepare('DELETE FROM result_amendments').run();
+    tx.prepare('DELETE FROM report_snapshots').run();
+    tx.prepare('DELETE FROM order_items').run();
+    tx.prepare('DELETE FROM invoices').run();
+    tx.prepare('DELETE FROM payments').run();
+    tx.prepare('DELETE FROM visits').run();
+    tx.prepare('DELETE FROM patients').run();
+    tx.prepare('DELETE FROM doctors').run();
+    tx.prepare('DELETE FROM parameter_reference_ranges').run();
+    tx.prepare('DELETE FROM test_parameters').run();
+    tx.prepare('DELETE FROM lab_tests').run();
+
+    try {
+      tx.prepare("DELETE FROM sqlite_sequence WHERE name NOT IN ('app_users', 'hospital_settings')").run();
+    } catch {
+      // Ignore if table not in sqlite_sequence
+    }
+
+    return { deletedTests: testCount, deletedParams: paramCount, deletedVisits: visitCount };
+  });
 }
 
 /**

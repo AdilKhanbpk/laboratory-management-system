@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useForm, useFieldArray, Control, UseFormRegister, useWatch } from 'react-hook-form';
+import { useForm, useFieldArray, Control, UseFormRegister, UseFormSetValue, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CreateTestSchema, CreateTestInput, LabTest } from '../../types';
 import { parseCurrencyToPaisa } from '../../lib/utils';
@@ -84,10 +84,232 @@ interface ParameterRangesEditorProps {
   control: Control<CreateTestInput>;
   paramIndex: number;
   register: UseFormRegister<CreateTestInput>;
+  setValue: UseFormSetValue<CreateTestInput>;
   errors?: any;
 }
 
-const ParameterRangesEditor: React.FC<ParameterRangesEditorProps> = ({ control, paramIndex, register }) => {
+const RangeItemRow: React.FC<{
+  rIdx: number;
+  paramIndex: number;
+  paramType: string;
+  unit: string;
+  register: UseFormRegister<CreateTestInput>;
+  control: Control<CreateTestInput>;
+  setValue: UseFormSetValue<CreateTestInput>;
+  remove: (index: number) => void;
+  canRemove: boolean;
+}> = ({
+  rIdx,
+  paramIndex,
+  paramType,
+  unit,
+  register,
+  control,
+  setValue,
+  remove,
+  canRemove,
+}) => {
+  const minAge = useWatch({
+    control,
+    name: `parameters.${paramIndex}.ranges.${rIdx}.min_age_days` as const,
+  });
+  const maxAge = useWatch({
+    control,
+    name: `parameters.${paramIndex}.ranges.${rIdx}.max_age_days` as const,
+  });
+
+  let currentAgeCategory = 'all';
+  if (minAge != null && minAge >= 6000) {
+    currentAgeCategory = 'adult';
+  } else if (maxAge != null && maxAge <= 365) {
+    currentAgeCategory = 'infant';
+  } else if (maxAge != null && maxAge < 6600 && (!minAge || minAge < 365)) {
+    currentAgeCategory = 'child';
+  }
+
+  const handleAgeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const cat = e.target.value;
+    if (cat === 'adult') {
+      setValue(`parameters.${paramIndex}.ranges.${rIdx}.min_age_days` as const, 6575);
+      setValue(`parameters.${paramIndex}.ranges.${rIdx}.max_age_days` as const, 47450);
+    } else if (cat === 'child') {
+      setValue(`parameters.${paramIndex}.ranges.${rIdx}.min_age_days` as const, 0);
+      setValue(`parameters.${paramIndex}.ranges.${rIdx}.max_age_days` as const, 6574);
+    } else if (cat === 'infant') {
+      setValue(`parameters.${paramIndex}.ranges.${rIdx}.min_age_days` as const, 0);
+      setValue(`parameters.${paramIndex}.ranges.${rIdx}.max_age_days` as const, 365);
+    } else {
+      setValue(`parameters.${paramIndex}.ranges.${rIdx}.min_age_days` as const, 0);
+      setValue(`parameters.${paramIndex}.ranges.${rIdx}.max_age_days` as const, 47450);
+    }
+  };
+
+  const id = (name: string) => `p${paramIndex}-r${rIdx}-${name}`;
+
+  return (
+    <div className="rounded-md border border-[#E2E8F0] bg-[#F8FAFC] p-4 space-y-4">
+      {/* Hidden inputs to guarantee min_age_days & max_age_days persist */}
+      <input
+        type="hidden"
+        {...register(`parameters.${paramIndex}.ranges.${rIdx}.min_age_days` as const, { valueAsNumber: true })}
+      />
+      <input
+        type="hidden"
+        {...register(`parameters.${paramIndex}.ranges.${rIdx}.max_age_days` as const, { valueAsNumber: true })}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-[13px] font-semibold text-[#1F2937]">Range {rIdx + 1}</span>
+
+          {/* Gender Selector: Male / Female / All */}
+          <div className="flex items-center gap-1.5">
+            <label htmlFor={id('gender')} className="text-xs font-medium text-[#64748B]">
+              Gender:
+            </label>
+            <select
+              id={id('gender')}
+              {...register(`parameters.${paramIndex}.ranges.${rIdx}.gender` as const)}
+              className={`${inputClass} !h-8 !w-auto text-xs`}
+            >
+              <option value="all">All genders</option>
+              <option value="male">Male (M)</option>
+              <option value="female">Female (F)</option>
+            </select>
+          </div>
+
+          {/* Age Group Selector: Adult / Child / Infant / All Ages */}
+          <div className="flex items-center gap-1.5">
+            <label htmlFor={id('age')} className="text-xs font-medium text-[#64748B]">
+              Age:
+            </label>
+            <select
+              id={id('age')}
+              value={currentAgeCategory}
+              onChange={handleAgeChange}
+              className={`${inputClass} !h-8 !w-auto text-xs`}
+            >
+              <option value="all">All Ages</option>
+              <option value="adult">Adult (Ad. ≥ 18 yrs)</option>
+              <option value="child">Child (Ch. &lt; 18 yrs)</option>
+              <option value="infant">Infant (&lt; 1 yr)</option>
+            </select>
+          </div>
+        </div>
+
+        {canRemove && (
+          <button
+            type="button"
+            onClick={() => remove(rIdx)}
+            title="Remove this range"
+            aria-label={`Remove range ${rIdx + 1}`}
+            className="w-8 h-8 inline-flex items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#DC2626] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {paramType === 'numeric' ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <Label htmlFor={id('nl')}>Normal low{unit ? ` (${unit})` : ''}</Label>
+              <input
+                id={id('nl')}
+                type="number"
+                step="any"
+                placeholder="13.5"
+                {...register(`parameters.${paramIndex}.ranges.${rIdx}.normal_low` as const, {
+                  valueAsNumber: true,
+                })}
+                className={`${inputClass} tabular-nums`}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor={id('nh')}>Normal high{unit ? ` (${unit})` : ''}</Label>
+              <input
+                id={id('nh')}
+                type="number"
+                step="any"
+                placeholder="17.5"
+                {...register(`parameters.${paramIndex}.ranges.${rIdx}.normal_high` as const, {
+                  valueAsNumber: true,
+                })}
+                className={`${inputClass} tabular-nums`}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor={id('pl')}>Critical low</Label>
+              <input
+                id={id('pl')}
+                type="number"
+                step="any"
+                placeholder="7.0"
+                {...register(`parameters.${paramIndex}.ranges.${rIdx}.panic_low` as const, {
+                  valueAsNumber: true,
+                })}
+                className={`${criticalInputClass} tabular-nums`}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor={id('ph')}>Critical high</Label>
+              <input
+                id={id('ph')}
+                type="number"
+                step="any"
+                placeholder="20.0"
+                {...register(`parameters.${paramIndex}.ranges.${rIdx}.panic_high` as const, {
+                  valueAsNumber: true,
+                })}
+                className={`${criticalInputClass} tabular-nums`}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor={id('text')} optional>
+              Reference text on report
+            </Label>
+            <input
+              id={id('text')}
+              type="text"
+              placeholder="e.g. M: 13.0 - 17.0   F: 11.5 - 15.5 (or leave blank to auto-generate)"
+              {...register(`parameters.${paramIndex}.ranges.${rIdx}.display_text` as const)}
+              className={inputClass}
+            />
+          </div>
+        </div>
+      ) : (
+        <div>
+          <Label htmlFor={id('text')} required>
+            Expected normal result
+          </Label>
+          <input
+            id={id('text')}
+            type="text"
+            placeholder="Negative, Non-reactive, Clear, Normal"
+            {...register(`parameters.${paramIndex}.ranges.${rIdx}.display_text` as const)}
+            className={inputClass}
+          />
+          <p className="mt-1.5 text-xs text-[#64748B]">
+            Printed in the reference interval column of the report.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ParameterRangesEditor: React.FC<ParameterRangesEditorProps> = ({
+  control,
+  paramIndex,
+  register,
+  setValue,
+}) => {
   const { fields, append, remove } = useFieldArray({
     control,
     name: `parameters.${paramIndex}.ranges` as const,
@@ -108,8 +330,6 @@ const ParameterRangesEditor: React.FC<ParameterRangesEditorProps> = ({ control, 
   const handleAddRange = () => {
     append(emptyRange());
   };
-
-  const id = (rIdx: number, name: string) => `p${paramIndex}-r${rIdx}-${name}`;
 
   return (
     <div className="space-y-3">
@@ -136,130 +356,18 @@ const ParameterRangesEditor: React.FC<ParameterRangesEditorProps> = ({ control, 
       ) : (
         <div className="space-y-3">
           {fields.map((rangeField, rIdx) => (
-            <div key={rangeField.id} className="rounded-md border border-[#E2E8F0] bg-[#F8FAFC] p-4 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-[13px] font-medium">Range {rIdx + 1}</span>
-                  <div className="flex items-center gap-2">
-                    <label htmlFor={id(rIdx, 'gender')} className="text-[13px] text-[#64748B]">
-                      Applies to
-                    </label>
-                    <select
-                      id={id(rIdx, 'gender')}
-                      {...register(`parameters.${paramIndex}.ranges.${rIdx}.gender` as const)}
-                      className={`${inputClass} !h-8 !w-auto`}
-                    >
-                      <option value="all">All genders</option>
-                      <option value="male">Male only</option>
-                      <option value="female">Female only</option>
-                    </select>
-                  </div>
-                </div>
-
-                {fields.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => remove(rIdx)}
-                    title="Remove this range"
-                    aria-label={`Remove range ${rIdx + 1}`}
-                    className="w-8 h-8 inline-flex items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#DC2626] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-
-              {paramType === 'numeric' ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div>
-                      <Label htmlFor={id(rIdx, 'nl')}>Normal low{unit ? ` (${unit})` : ''}</Label>
-                      <input
-                        id={id(rIdx, 'nl')}
-                        type="number"
-                        step="any"
-                        placeholder="13.5"
-                        {...register(`parameters.${paramIndex}.ranges.${rIdx}.normal_low` as const, {
-                          valueAsNumber: true,
-                        })}
-                        className={`${inputClass} tabular-nums`}
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor={id(rIdx, 'nh')}>Normal high{unit ? ` (${unit})` : ''}</Label>
-                      <input
-                        id={id(rIdx, 'nh')}
-                        type="number"
-                        step="any"
-                        placeholder="17.5"
-                        {...register(`parameters.${paramIndex}.ranges.${rIdx}.normal_high` as const, {
-                          valueAsNumber: true,
-                        })}
-                        className={`${inputClass} tabular-nums`}
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor={id(rIdx, 'pl')}>Critical low</Label>
-                      <input
-                        id={id(rIdx, 'pl')}
-                        type="number"
-                        step="any"
-                        placeholder="7.0"
-                        {...register(`parameters.${paramIndex}.ranges.${rIdx}.panic_low` as const, {
-                          valueAsNumber: true,
-                        })}
-                        className={`${criticalInputClass} tabular-nums`}
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor={id(rIdx, 'ph')}>Critical high</Label>
-                      <input
-                        id={id(rIdx, 'ph')}
-                        type="number"
-                        step="any"
-                        placeholder="20.0"
-                        {...register(`parameters.${paramIndex}.ranges.${rIdx}.panic_high` as const, {
-                          valueAsNumber: true,
-                        })}
-                        className={`${criticalInputClass} tabular-nums`}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label htmlFor={id(rIdx, 'text')} optional>
-                      Reference text on the report
-                    </Label>
-                    <input
-                      id={id(rIdx, 'text')}
-                      type="text"
-                      placeholder="Leave blank to generate it from the limits, for example 13.5 - 17.5 g/dL"
-                      {...register(`parameters.${paramIndex}.ranges.${rIdx}.display_text` as const)}
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <Label htmlFor={id(rIdx, 'text')} required>
-                    Expected normal result
-                  </Label>
-                  <input
-                    id={id(rIdx, 'text')}
-                    type="text"
-                    placeholder="Negative, Non-reactive, Clear, Normal"
-                    {...register(`parameters.${paramIndex}.ranges.${rIdx}.display_text` as const)}
-                    className={inputClass}
-                  />
-                  <p className="mt-1.5 text-xs text-[#64748B]">
-                    Printed in the reference interval column of the report.
-                  </p>
-                </div>
-              )}
-            </div>
+            <RangeItemRow
+              key={rangeField.id}
+              rIdx={rIdx}
+              paramIndex={paramIndex}
+              paramType={paramType}
+              unit={unit}
+              register={register}
+              control={control}
+              setValue={setValue}
+              remove={remove}
+              canRemove={fields.length > 1}
+            />
           ))}
         </div>
       )}
@@ -438,12 +546,24 @@ export const TestFormModal: React.FC<TestFormModalProps> = ({
         let text = r.display_text ? r.display_text.trim() : '';
         if (!text) {
           if (param.parameter_type === 'numeric') {
+            let prefix = '';
+            if (r.gender === 'male') prefix = 'M: ';
+            else if (r.gender === 'female') prefix = 'F: ';
+
+            if (r.min_age_days != null && r.min_age_days >= 6000) {
+              prefix += 'Ad: ';
+            } else if (r.max_age_days != null && r.max_age_days < 6600 && r.max_age_days > 365) {
+              prefix += 'Ch: ';
+            } else if (r.max_age_days != null && r.max_age_days <= 365) {
+              prefix += 'Inf: ';
+            }
+
             if (r.normal_low != null && r.normal_high != null) {
-              text = `${r.normal_low} - ${r.normal_high}${unitStr}`;
+              text = `${prefix}${r.normal_low} - ${r.normal_high}${unitStr}`.trim();
             } else if (r.normal_low != null) {
-              text = `> ${r.normal_low}${unitStr}`;
+              text = `${prefix}> ${r.normal_low}${unitStr}`.trim();
             } else if (r.normal_high != null) {
-              text = `< ${r.normal_high}${unitStr}`;
+              text = `${prefix}< ${r.normal_high}${unitStr}`.trim();
             } else {
               text = 'Standard Reference Range';
             }
@@ -698,6 +818,7 @@ export const TestFormModal: React.FC<TestFormModalProps> = ({
                       control={control}
                       paramIndex={index}
                       register={register}
+                      setValue={setValue}
                       errors={errors}
                     />
                   </div>

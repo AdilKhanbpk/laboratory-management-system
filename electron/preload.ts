@@ -107,6 +107,7 @@ const CHANNELS = {
   DEV_IMPORT_LEGACY_TESTS: 'dev:import-legacy-tests',
   DEV_SELECT_LEGACY_FILE: 'dev:select-legacy-file',
   DEV_CLEAR_ALL_TESTS: 'dev:clear-all-tests',
+  DEV_WIPE_ALL_DATA: 'dev:wipe-all-data',
 
   // Audit
   AUDIT_GET_RECENT: 'audit:get-recent',
@@ -206,6 +207,7 @@ const api: ElectronAPI = {
     importLegacyTests: (filePath?: string) => ipcRenderer.invoke(CHANNELS.DEV_IMPORT_LEGACY_TESTS, filePath),
     selectLegacyFile: () => ipcRenderer.invoke(CHANNELS.DEV_SELECT_LEGACY_FILE),
     clearAllTests: () => ipcRenderer.invoke(CHANNELS.DEV_CLEAR_ALL_TESTS),
+    wipeAllData: () => ipcRenderer.invoke(CHANNELS.DEV_WIPE_ALL_DATA),
   },
   restore: {
     selectFile: () => ipcRenderer.invoke(CHANNELS.RESTORE_SELECT_FILE),

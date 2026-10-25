@@ -716,6 +716,7 @@ export interface ElectronAPI {
     importLegacyTests: (filePath?: string) => Promise<IpcResponse<LegacyTestImportStats>>;
     selectLegacyFile: () => Promise<IpcResponse<string | null>>;
     clearAllTests: () => Promise<IpcResponse<{ deletedTests: number; deletedParams: number }>>;
+    wipeAllData: () => Promise<IpcResponse<{ deletedTests: number; deletedParams: number; deletedVisits: number }>>;
   };
   restore: {
     selectFile: () => Promise<IpcResponse<string | null>>;

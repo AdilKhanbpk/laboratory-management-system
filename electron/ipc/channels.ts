@@ -89,6 +89,7 @@ export const IPC_CHANNELS = {
   DEV_IMPORT_LEGACY_TESTS: 'dev:import-legacy-tests',
   DEV_SELECT_LEGACY_FILE: 'dev:select-legacy-file',
   DEV_CLEAR_ALL_TESTS: 'dev:clear-all-tests',
+  DEV_WIPE_ALL_DATA: 'dev:wipe-all-data',
 
   // Audit
   AUDIT_GET_RECENT: 'audit:get-recent',

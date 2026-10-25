@@ -64,7 +64,7 @@ describe('Legacy Test Importer Integration', () => {
 
     expect(testCount).toBe(249);
     expect(paramCount).toBeGreaterThanOrEqual(446);
-    expect(rangeCount).toBe(paramCount);
+    expect(rangeCount).toBeGreaterThanOrEqual(paramCount);
 
     // Verify sample test: Complete Blood Count (CBC)
     const cbc = db.prepare('SELECT * FROM lab_tests WHERE test_code = ?').get('CBC');
@@ -72,6 +72,28 @@ describe('Legacy Test Importer Integration', () => {
     expect(cbc.test_name).toBe('COMPLETE BLOOD COUNT');
     expect(cbc.category).toBe('HEMATOLOGY');
     expect(cbc.price_paisa).toBe(50000); // Rs 500 = 50000 paisa
+
+    // Verify Male (M) and Female (F) ranges for CBC Hemoglobin
+    const hbRanges = db.prepare(`
+      SELECT prr.* FROM parameter_reference_ranges prr
+      JOIN test_parameters tp ON prr.parameter_id = tp.id
+      JOIN lab_tests lt ON tp.test_id = lt.id
+      WHERE lt.test_code = 'CBC' AND tp.parameter_name = 'HB'
+    `).all();
+    expect(hbRanges.length).toBe(2);
+    expect(hbRanges.some((r: any) => r.gender === 'male' && r.normal_low === 13.0 && r.normal_high === 17.0)).toBe(true);
+    expect(hbRanges.some((r: any) => r.gender === 'female' && r.normal_low === 11.5 && r.normal_high === 15.5)).toBe(true);
+
+    // Verify Adult (Ad.) and Child (Ch.) ranges for CBC MCV
+    const mcvRanges = db.prepare(`
+      SELECT prr.* FROM parameter_reference_ranges prr
+      JOIN test_parameters tp ON prr.parameter_id = tp.id
+      JOIN lab_tests lt ON tp.test_id = lt.id
+      WHERE lt.test_code = 'CBC' AND tp.parameter_name = 'MCV'
+    `).all();
+    expect(mcvRanges.length).toBe(2);
+    expect(mcvRanges.some((r: any) => r.min_age_days >= 6000 && r.normal_low === 76.0 && r.normal_high === 96.0)).toBe(true);
+    expect(mcvRanges.some((r: any) => r.max_age_days < 6600 && r.normal_low === 80.0 && r.normal_high === 105.0)).toBe(true);
 
     // Verify idempotency: re-running updates without duplicate code error
     const secondRun = importLegacyTestsToActiveDatabase(dbManager, legacyBakPath);

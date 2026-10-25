@@ -6,6 +6,7 @@ import {
   detectLegacyTestCatalog,
   importLegacyTestsToActiveDatabase,
   clearAllCatalogTests,
+  wipeAllDatabaseData,
   LegacyTestDetectionResult,
   LegacyTestImportStats,
 } from '../database/legacy-test-importer';
@@ -1367,6 +1368,18 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       return { success: true, data: res };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to clear tests from database.' };
+    }
+  });
+
+  // Developer: Wipe All Database Data (Transactional & Catalog - Fresh Start)
+  ipcMain.handle(IPC_CHANNELS.DEV_WIPE_ALL_DATA, async (): Promise<IpcResponse<{ deletedTests: number; deletedParams: number; deletedVisits: number }>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const res = wipeAllDatabaseData(ctx.dbManager);
+
+      return { success: true, data: res };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to wipe database data.' };
     }
   });
 

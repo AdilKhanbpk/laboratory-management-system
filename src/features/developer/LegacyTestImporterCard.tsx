@@ -87,7 +87,7 @@ export const LegacyTestImporterCard: React.FC<LegacyTestImporterCardProps> = ({ 
     }
   };
 
-  // Clear existing tests
+  // Clear existing tests and data for fresh start
   const handleClearAllTests = async () => {
     setIsClearing(true);
     setErrorMsg(null);
@@ -95,15 +95,15 @@ export const LegacyTestImporterCard: React.FC<LegacyTestImporterCardProps> = ({ 
     setClearSuccessMsg(null);
 
     try {
-      const res = await window.electronAPI.developer.clearAllTests();
+      const res = await window.electronAPI.developer.wipeAllData();
       if (res.success && res.data) {
-        setClearSuccessMsg(`Successfully cleared ${res.data.deletedTests} tests and ${res.data.deletedParams} parameters from active database.`);
+        setClearSuccessMsg(`Successfully cleared all database data (${res.data.deletedTests} tests, ${res.data.deletedParams} parameters, ${res.data.deletedVisits} visits). Database is 100% fresh from the start.`);
         setShowClearConfirm(false);
       } else {
-        setErrorMsg(res.error || 'Failed to clear tests.');
+        setErrorMsg(res.error || 'Failed to clear data.');
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Unexpected error while clearing tests.');
+      setErrorMsg(err?.message || 'Unexpected error while clearing data.');
     } finally {
       setIsClearing(false);
     }
