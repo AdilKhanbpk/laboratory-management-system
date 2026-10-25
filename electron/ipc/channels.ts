@@ -90,6 +90,9 @@ export const IPC_CHANNELS = {
   DEV_DETECT_LEGACY_BACKUP: 'dev:detect-legacy-backup',
   DEV_IMPORT_LEGACY_TESTS: 'dev:import-legacy-tests',
   DEV_SELECT_LEGACY_FILE: 'dev:select-legacy-file',
+  DEV_DETECT_SAVED_TEMPLATE: 'dev:detect-saved-template',
+  DEV_SEED_SAVED_TEMPLATE: 'dev:seed-saved-template',
+  DEV_SELECT_TEMPLATE_FILE: 'dev:select-template-file',
   DEV_CLEAR_ALL_TESTS: 'dev:clear-all-tests',
   DEV_WIPE_ALL_DATA: 'dev:wipe-all-data',
 

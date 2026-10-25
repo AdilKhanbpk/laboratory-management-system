@@ -9,6 +9,7 @@ files:
   - dist/**/*
   - dist-electron/**/*
   - database/migrations/**/*
+  - database/seeds/**/*
   - package.json
 
 asar: true
@@ -18,6 +19,8 @@ asarUnpack:
 extraResources:
   - from: database/migrations
     to: database/migrations
+  - from: database/seeds
+    to: database/seeds
 
 win:
   target:

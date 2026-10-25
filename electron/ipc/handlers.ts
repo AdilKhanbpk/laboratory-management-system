@@ -12,6 +12,14 @@ import {
   LegacyTestImportStats,
 } from '../database/legacy-test-importer';
 import {
+  detectSavedTemplate,
+  applySavedTemplateSeed,
+} from '../database/template-seeder';
+import {
+  SavedTemplateDetectionResult,
+  SavedTemplateSeedResult,
+} from '../types/ipc';
+import {
   InitialSetupSchema,
   LoginSchema,
   UnlockSchema,
@@ -1384,6 +1392,67 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
         title: 'Select Legacy Laboratory Backup File (.bak / .db)',
         filters: [
           { name: 'Legacy Backup Files', extensions: ['bak', 'db', 'sqlite'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+        properties: ['openFile'],
+      });
+      if (res.canceled || res.filePaths.length === 0) {
+        return { success: true, data: null };
+      }
+      return { success: true, data: res.filePaths[0] };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to open file dialog.' };
+    }
+  });
+
+  // Developer: Detect Saved Report Template Seed
+  ipcMain.handle(IPC_CHANNELS.DEV_DETECT_SAVED_TEMPLATE, async (_, filePath?: unknown): Promise<IpcResponse<SavedTemplateDetectionResult>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const customPath = typeof filePath === 'string' && filePath.trim() ? filePath.trim() : undefined;
+      const detected = detectSavedTemplate(customPath);
+      return { success: true, data: detected };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to detect saved report template seed.' };
+    }
+  });
+
+  // Developer: Seed / Apply Saved Report Design to Active Database
+  ipcMain.handle(IPC_CHANNELS.DEV_SEED_SAVED_TEMPLATE, async (_, filePath?: unknown): Promise<IpcResponse<SavedTemplateSeedResult>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const customPath = typeof filePath === 'string' && filePath.trim() ? filePath.trim() : undefined;
+      const result = applySavedTemplateSeed(ctx.dbManager, customPath);
+
+      // Audit log the template seed
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'SEED_REPORT_TEMPLATE',
+        entityType: 'REPORT_TEMPLATE',
+        entityId: result.templateId,
+        details: {
+          templateName: result.templateName,
+          hospitalName: result.hospitalName,
+          hasLogo: result.hasLogo,
+          activated: result.activated,
+        },
+      });
+
+      return { success: true, data: result };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to apply saved report design.' };
+    }
+  });
+
+  // Developer: Select Report Template File Dialog
+  ipcMain.handle(IPC_CHANNELS.DEV_SELECT_TEMPLATE_FILE, async (): Promise<IpcResponse<string | null>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const mainWindow = ctx.getMainWindow ? ctx.getMainWindow() : null;
+      const res = await dialog.showOpenDialog(mainWindow as any, {
+        title: 'Select Saved Report Template File (.json / .db)',
+        filters: [
+          { name: 'Report Template Seed Files', extensions: ['json', 'db', 'sqlite'] },
           { name: 'All Files', extensions: ['*'] },
         ],
         properties: ['openFile'],

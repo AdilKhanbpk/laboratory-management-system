@@ -648,6 +648,33 @@ export interface LegacyTestImportStats {
   departmentsFound: number;
 }
 
+export interface SavedTemplateDetectionResult {
+  detected: boolean;
+  filePath: string | null;
+  fileName: string | null;
+  fileSize: number;
+  templateName: string;
+  hospitalName: string;
+  supervisor: string;
+  address: string;
+  badgeText: string;
+  hasLogo: boolean;
+  logoLength: number;
+  footerText: string;
+  footerRightText: string;
+  columnsCount: number;
+  error?: string;
+}
+
+export interface SavedTemplateSeedResult {
+  templateId: string;
+  templateName: string;
+  hospitalName: string;
+  hasLogo: boolean;
+  activated: boolean;
+  updatedAt: string;
+}
+
 export const InspectBackupSchema = z.object({
   filePath: z.string().min(1, 'Backup file path is required'),
 });
@@ -820,6 +847,9 @@ export interface ElectronAPI {
     detectLegacyBackup: (filePath?: string) => Promise<IpcResponse<LegacyTestDetectionResult>>;
     importLegacyTests: (filePath?: string) => Promise<IpcResponse<LegacyTestImportStats>>;
     selectLegacyFile: () => Promise<IpcResponse<string | null>>;
+    detectSavedTemplate: (filePath?: string) => Promise<IpcResponse<SavedTemplateDetectionResult>>;
+    seedSavedTemplate: (filePath?: string) => Promise<IpcResponse<SavedTemplateSeedResult>>;
+    selectTemplateFile: () => Promise<IpcResponse<string | null>>;
     clearAllTests: () => Promise<IpcResponse<{ deletedTests: number; deletedParams: number }>>;
     wipeAllData: () => Promise<IpcResponse<{ deletedTests: number; deletedParams: number; deletedVisits: number }>>;
   };

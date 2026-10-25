@@ -1,5 +1,6 @@
 import { DatabaseManager } from '../connection';
 import type { ReportTemplate } from '../../types/ipc';
+import { findCandidateSavedTemplate, applySavedTemplateSeed } from '../template-seeder';
 
 export const DEFAULT_REPORT_TEMPLATE: ReportTemplate = {
   id: 'al-shifa-default',
@@ -90,6 +91,16 @@ export class TemplateRepository {
     const db = this.dbManager.getDatabase();
     const countRow = db.prepare('SELECT COUNT(*) as count FROM report_templates').get() as { count: number };
     if (countRow.count === 0) {
+      try {
+        const seedPath = findCandidateSavedTemplate();
+        if (seedPath) {
+          applySavedTemplateSeed(this.dbManager, seedPath);
+          return;
+        }
+      } catch (err) {
+        console.warn('Failed to apply saved template seed during init, falling back to default:', err);
+      }
+
       const now = new Date().toISOString();
       const configJson = JSON.stringify({
         header: DEFAULT_REPORT_TEMPLATE.header,

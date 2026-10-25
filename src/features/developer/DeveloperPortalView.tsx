@@ -529,6 +529,7 @@ import {
 } from 'lucide-react';
 
 import { LegacyTestImporterCard } from './LegacyTestImporterCard';
+import { ReportDesignImporterCard } from './ReportDesignImporterCard';
 
 /*
  * Same tokens as the rest of the app:
@@ -869,6 +870,9 @@ export const DeveloperPortalView: React.FC<DeveloperPortalViewProps> = ({ onNavi
 
       {/* Legacy test catalog importer (still in its previous style) */}
       <LegacyTestImporterCard onNavigate={onNavigate} />
+
+      {/* Saved Hospital Report Design & Branding Seeder */}
+      <ReportDesignImporterCard onNavigate={onNavigate} />
 
       {/* Restore */}
       <Panel

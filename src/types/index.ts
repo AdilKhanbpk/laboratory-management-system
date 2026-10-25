@@ -51,6 +51,8 @@ export type {
   ResultFlag,
   LegacyTestDetectionResult,
   LegacyTestImportStats,
+  SavedTemplateDetectionResult,
+  SavedTemplateSeedResult,
   ResultStatus,
   TestResult,
   ReportSnapshot,
