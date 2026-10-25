@@ -284,6 +284,15 @@ export interface VisitSearchResult {
   total: number;
   page: number;
   totalPages: number;
+  totalBilledPaisa?: number;
+  totalPaidPaisa?: number;
+  totalBalancePaisa?: number;
+}
+
+export interface AuditQueryResult {
+  logs: AuditLogEntry[];
+  total: number;
+  hasMore: boolean;
 }
 
 export interface DoctorReferralStats {
@@ -709,7 +718,7 @@ export interface ElectronAPI {
     create: (input: CreateVisitOrderInput) => Promise<IpcResponse<VisitDetail>>;
     updateOrderAndInvoice: (input: UpdateVisitOrderAndInvoiceInput) => Promise<IpcResponse<VisitDetail>>;
     getById: (id: number) => Promise<IpcResponse<VisitDetail | null>>;
-    search: (params?: { query?: string; status?: string; startDate?: string; endDate?: string; page?: number; limit?: number }) => Promise<IpcResponse<VisitSearchResult>>;
+    search: (params?: { query?: string; status?: string; paymentStatus?: string; startDate?: string; endDate?: string; page?: number; limit?: number }) => Promise<IpcResponse<VisitSearchResult>>;
     getPatientHistory: (patientId: number) => Promise<IpcResponse<Visit[]>>;
   };
   billing: {
@@ -717,7 +726,7 @@ export interface ElectronAPI {
     getInvoice: (id: number) => Promise<IpcResponse<Invoice | null>>;
   };
   results: {
-    getWorklist: (params?: { query?: string; status?: string; page?: number; limit?: number }) => Promise<IpcResponse<WorklistOrderItem[]>>;
+    getWorklist: (params?: { query?: string; status?: string; startDate?: string; endDate?: string; page?: number; limit?: number }) => Promise<IpcResponse<WorklistOrderItem[]>>;
     getForOrderItem: (orderItemId: number) => Promise<IpcResponse<{
       orderItem: OrderItem;
       patient: Patient;
@@ -763,6 +772,7 @@ export interface ElectronAPI {
   };
   audit: {
     getRecent: (limit?: number) => Promise<IpcResponse<AuditLogEntry[]>>;
+    query: (params?: { startDate?: string; endDate?: string; limit?: number; offset?: number }) => Promise<IpcResponse<AuditQueryResult>>;
   };
   app: {
     getInfo: () => Promise<IpcResponse<AppInfo>>;

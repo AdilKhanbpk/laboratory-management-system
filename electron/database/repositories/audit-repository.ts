@@ -76,5 +76,52 @@ export class AuditRepository {
 
     return rows as AuditLogEntry[];
   }
+
+  public getLogs(params: {
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): { logs: AuditLogEntry[]; total: number; hasMore: boolean } {
+    const db = this.dbManager.getDatabase();
+    const conditions: string[] = [];
+    const sqlParams: any[] = [];
+
+    if (params.startDate) {
+      conditions.push(`a.created_at >= ?`);
+      sqlParams.push(params.startDate);
+    }
+    if (params.endDate) {
+      conditions.push(`a.created_at <= ?`);
+      sqlParams.push(params.endDate);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countRow = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM audit_logs a
+      ${whereClause}
+    `).get(...sqlParams) as { count: number };
+
+    const total = countRow.count;
+    const limit = Math.max(1, Math.min(500, params.limit ?? 100));
+    const offset = Math.max(0, params.offset ?? 0);
+
+    const rows = db.prepare(`
+      SELECT a.*, u.username, u.full_name
+      FROM audit_logs a
+      LEFT JOIN app_users u ON a.user_id = u.id
+      ${whereClause}
+      ORDER BY a.created_at DESC, a.id DESC
+      LIMIT ? OFFSET ?
+    `).all(...sqlParams, limit, offset) as AuditLogEntry[];
+
+    return {
+      logs: rows,
+      total,
+      hasMore: offset + rows.length < total,
+    };
+  }
 }
 

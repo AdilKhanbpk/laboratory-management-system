@@ -1467,6 +1467,17 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
     }
   });
 
+  // 35b. Audit Logs with Date Range & Pagination
+  ipcMain.handle(IPC_CHANNELS.AUDIT_QUERY, async (_, params: any): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const result = ctx.auditRepo.getLogs(params || {});
+      return { success: true, data: result };
+    } catch {
+      return { success: false, error: 'Failed to query audit logs.' };
+    }
+  });
+
   // --- USERS MANAGEMENT & RBAC HANDLERS ---
   // Users List
   ipcMain.handle(IPC_CHANNELS.USERS_LIST, async (): Promise<IpcResponse<SafeUser[]>> => {

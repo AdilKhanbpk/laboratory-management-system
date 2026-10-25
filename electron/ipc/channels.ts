@@ -94,6 +94,7 @@ export const IPC_CHANNELS = {
 
   // Audit
   AUDIT_GET_RECENT: 'audit:get-recent',
+  AUDIT_QUERY: 'audit:query',
 
   // System & App
   APP_GET_INFO: 'app:get-info',

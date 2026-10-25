@@ -113,6 +113,7 @@ const CHANNELS = {
 
   // Audit
   AUDIT_GET_RECENT: 'audit:get-recent',
+  AUDIT_QUERY: 'audit:query',
 
   // System & App
   APP_GET_INFO: 'app:get-info',
@@ -219,6 +220,7 @@ const api: ElectronAPI = {
   },
   audit: {
     getRecent: (limit?: number) => ipcRenderer.invoke(CHANNELS.AUDIT_GET_RECENT, limit),
+    query: (params?: { startDate?: string; endDate?: string; limit?: number; offset?: number }) => ipcRenderer.invoke(CHANNELS.AUDIT_QUERY, params),
   },
   app: {
     getInfo: () => ipcRenderer.invoke(CHANNELS.APP_GET_INFO),

@@ -68,26 +68,62 @@ const workflowStatus: Record<GroupedVisit['overallStatus'], { label: string; dot
   finalized: { label: 'Finalized', dot: 'bg-[#15803D]' },
 };
 
+function getFormattedDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getSevenDaysAgo(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return getFormattedDate(d);
+}
+
+function getOneMonthAgo(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return getFormattedDate(d);
+}
+
+function getToday(): string {
+  return getFormattedDate(new Date());
+}
+
+type DatePreset = '1month' | '7days' | 'all' | 'custom';
+
 export const AccessionWorklistView: React.FC = () => {
   const [worklist, setWorklist] = useState<WorklistOrderItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Filters
+  // Filters: Default active tab is 'pending', default date is 1 month
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
+  const [datePreset, setDatePreset] = useState<DatePreset>('7days');
+  const [startDate, setStartDate] = useState<string>(getOneMonthAgo());
+  const [endDate, setEndDate] = useState<string>(getToday());
 
   // Active modals
   const [activeOrderItemId, setActiveOrderItemId] = useState<number | null>(null);
   const [activeVisitTests, setActiveVisitTests] = useState<VisitTestItem[]>([]);
   const [previewVisitId, setPreviewVisitId] = useState<number | null>(null);
 
-  const fetchWorklist = useCallback(async () => {
+  const fetchWorklist = useCallback(async (customStart?: string, customEnd?: string) => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
+      const sDate = customStart !== undefined ? customStart : startDate;
+      const eDate = customEnd !== undefined ? customEnd : endDate;
+
+      const startISO = sDate ? new Date(`${sDate}T00:00:00`).toISOString() : undefined;
+      const endISO = eDate ? new Date(`${eDate}T23:59:59.999`).toISOString() : undefined;
+
       const res = await window.electronAPI.results.getWorklist({
         query: searchQuery.trim() || undefined,
+        startDate: startISO,
+        endDate: endISO,
       });
 
       if (res.success && res.data) {
@@ -100,11 +136,32 @@ export const AccessionWorklistView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, startDate, endDate]);
 
   useEffect(() => {
     fetchWorklist();
   }, [fetchWorklist]);
+
+  const applyDatePreset = (preset: DatePreset) => {
+    setDatePreset(preset);
+    if (preset === '1month') {
+      const s = getOneMonthAgo();
+      const e = getToday();
+      setStartDate(s);
+      setEndDate(e);
+      fetchWorklist(s, e);
+    } else if (preset === '7days') {
+      const s = getSevenDaysAgo();
+      const e = getToday();
+      setStartDate(s);
+      setEndDate(e);
+      fetchWorklist(s, e);
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+      fetchWorklist('', '');
+    }
+  };
 
   // Group raw order items by visit (bill)
   const groupedVisits = React.useMemo<GroupedVisit[]>(() => {
@@ -234,7 +291,7 @@ export const AccessionWorklistView: React.FC = () => {
             Enter observed values, check them against reference ranges and finalize reports.
           </p>
         </div>
-        <button type="button" onClick={fetchWorklist} disabled={isLoading} className={secondaryBtn}>
+        <button type="button" onClick={() => fetchWorklist()} disabled={isLoading} className={secondaryBtn}>
           <RotateCw className={`w-4 h-4 text-[#64748B] ${isLoading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
@@ -252,45 +309,128 @@ export const AccessionWorklistView: React.FC = () => {
 
       {/* Worklist: filter toolbar, then table */}
       <section className="bg-white border border-[#E2E8F0] rounded-lg overflow-hidden">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-4 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
-          <div
-            className="flex flex-wrap gap-1 p-1 rounded-md bg-white border border-[#CBD5E1] self-start"
-            role="group"
-            aria-label="Filter by status"
-          >
-            {tabs.map((tab) => {
-              const active = statusFilter === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setStatusFilter(tab.id)}
-                  className={`h-7 px-3 rounded text-[13px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] ${
-                    active
-                      ? 'bg-[#0F766E] text-white'
-                      : 'text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#1F2937]'
-                  }`}
-                >
-                  {tab.label}
-                  <span className={`ml-1.5 tabular-nums font-normal ${active ? 'text-white/80' : 'text-[#94A3B8]'}`}>
-                    {tab.count}
-                  </span>
-                </button>
-              );
-            })}
+        <div className="flex flex-col gap-3 px-4 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+          {/* Status tabs & Search Bar */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div
+              className="flex flex-wrap gap-1 p-1 rounded-md bg-white border border-[#CBD5E1] self-start"
+              role="group"
+              aria-label="Filter by status"
+            >
+              {tabs.map((tab) => {
+                const active = statusFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setStatusFilter(tab.id)}
+                    className={`h-7 px-3 rounded text-[13px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] ${
+                      active
+                        ? 'bg-[#0F766E] text-white'
+                        : 'text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#1F2937]'
+                    }`}
+                  >
+                    {tab.label}
+                    <span className={`ml-1.5 tabular-nums font-normal ${active ? 'text-white/80' : 'text-[#94A3B8]'}`}>
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="relative w-full lg:w-80">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#94A3B8]" aria-hidden="true" />
+              <input
+                type="text"
+                aria-label="Search worklist"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search patient, MRN, visit or test code"
+                className={`${inputClass} pl-9`}
+              />
+            </div>
           </div>
 
-          <div className="relative w-full lg:w-80">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#94A3B8]" aria-hidden="true" />
-            <input
-              type="text"
-              aria-label="Search worklist"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search patient, MRN, visit or test code"
-              className={`${inputClass} pl-9`}
-            />
+          {/* Date range filters */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-[#E2E8F0]">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-[#64748B]">Date range:</span>
+              <div className="inline-flex rounded-md border border-[#CBD5E1] bg-white p-0.5" role="group">
+                <button
+                  type="button"
+                  onClick={() => applyDatePreset('1month')}
+                  className={`h-6 px-2.5 rounded text-xs font-medium transition-colors ${
+                    datePreset === '1month'
+                      ? 'bg-[#0F766E] text-white'
+                      : 'text-[#64748B] hover:bg-[#F1F5F9]'
+                  }`}
+                >
+                  1 Month
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyDatePreset('7days')}
+                  className={`h-6 px-2.5 rounded text-xs font-medium transition-colors ${
+                    datePreset === '7days'
+                      ? 'bg-[#0F766E] text-white'
+                      : 'text-[#64748B] hover:bg-[#F1F5F9]'
+                  }`}
+                >
+                  Last 7 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyDatePreset('all')}
+                  className={`h-6 px-2.5 rounded text-xs font-medium transition-colors ${
+                    datePreset === 'all'
+                      ? 'bg-[#0F766E] text-white'
+                      : 'text-[#64748B] hover:bg-[#F1F5F9]'
+                  }`}
+                >
+                  All Time
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-[#64748B]">From:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setDatePreset('custom');
+                  }}
+                  className="h-7 px-2 text-xs border border-[#CBD5E1] rounded bg-white text-[#1F2937] focus:outline-none focus:ring-1 focus:ring-[#0F766E]"
+                  title="From date"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-[#64748B]">To:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setDatePreset('custom');
+                  }}
+                  className="h-7 px-2 text-xs border border-[#CBD5E1] rounded bg-white text-[#1F2937] focus:outline-none focus:ring-1 focus:ring-[#0F766E]"
+                  title="To date"
+                />
+              </div>
+              {datePreset === 'custom' && (
+                <button
+                  type="button"
+                  onClick={() => fetchWorklist()}
+                  className="h-7 px-2 text-xs rounded bg-[#0F766E] text-white font-medium hover:bg-[#115E59]"
+                >
+                  Apply
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

@@ -63,12 +63,24 @@ export class ResultRepository {
   public getWorklist(params: {
     query?: string;
     status?: string;
+    startDate?: string;
+    endDate?: string;
     page?: number;
     limit?: number;
   } = {}): WorklistOrderItem[] {
     const db = this.dbManager.getDatabase();
     const conditions: string[] = [];
     const sqlParams: any[] = [];
+
+    if (params.startDate) {
+      conditions.push(`v.order_date >= ?`);
+      sqlParams.push(params.startDate);
+    }
+
+    if (params.endDate) {
+      conditions.push(`v.order_date <= ?`);
+      sqlParams.push(params.endDate);
+    }
 
     if (params.query && params.query.trim()) {
       const q = `%${params.query.trim()}%`;

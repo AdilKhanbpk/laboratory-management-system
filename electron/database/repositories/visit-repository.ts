@@ -637,6 +637,7 @@ export class VisitRepository {
   public searchVisits(params: {
     query?: string;
     status?: string;
+    paymentStatus?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
@@ -656,7 +657,13 @@ export class VisitRepository {
       sqlParams.push(q, q, q, q);
     }
 
-    if (params.status && params.status !== 'all') {
+    const effectivePaymentStatus = params.paymentStatus || (params.status === 'paid' || params.status === 'unpaid' ? params.status : undefined);
+
+    if (effectivePaymentStatus === 'paid') {
+      conditions.push(`i.payment_status = 'paid'`);
+    } else if (effectivePaymentStatus === 'unpaid') {
+      conditions.push(`(i.payment_status IN ('unpaid', 'partially_paid') OR i.balance_amount > 0)`);
+    } else if (params.status && params.status !== 'all') {
       conditions.push(`v.status = ?`);
       sqlParams.push(params.status);
     }
@@ -685,6 +692,19 @@ export class VisitRepository {
 
     const total = countRow.count;
     const totalPages = Math.ceil(total / limit) || 1;
+
+    const aggregateRow = db
+      .prepare(`
+        SELECT
+          COALESCE(SUM(i.final_total), 0) as totalBilledPaisa,
+          COALESCE(SUM(i.paid_amount), 0) as totalPaidPaisa,
+          COALESCE(SUM(i.balance_amount), 0) as totalBalancePaisa
+        FROM visits v
+        JOIN patients p ON v.patient_id = p.id
+        LEFT JOIN invoices i ON v.id = i.visit_id
+        ${whereClause}
+      `)
+      .get(...sqlParams) as { totalBilledPaisa: number; totalPaidPaisa: number; totalBalancePaisa: number };
 
     const visits = db
       .prepare(`
@@ -716,6 +736,9 @@ export class VisitRepository {
       total,
       page,
       totalPages,
+      totalBilledPaisa: Number(aggregateRow?.totalBilledPaisa || 0),
+      totalPaidPaisa: Number(aggregateRow?.totalPaidPaisa || 0),
+      totalBalancePaisa: Number(aggregateRow?.totalBalancePaisa || 0),
     };
   }
 

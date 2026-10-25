@@ -11,6 +11,7 @@ export type {
   SafeUser,
   HospitalSettings,
   AuditLogEntry,
+  AuditQueryResult,
   Patient,
   PatientSearchResult,
   DuplicatePatientWarning,
