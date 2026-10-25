@@ -18,18 +18,6 @@ interface LabReportPreviewModalProps {
   onOpenAmendment?: (resultId: number) => void;
 }
 
-/** One label/value line in the patient block. */
-const InfoRow: React.FC<{ label: string; children: React.ReactNode; mono?: boolean }> = ({
-  label,
-  children,
-  mono,
-}) => (
-  <div className="grid grid-cols-[104px_1fr] gap-2 py-[3px]">
-    <dt className="text-slate-600">{label}</dt>
-    <dd className={`font-medium text-black ${mono ? 'tabular-nums' : ''}`}>{children}</dd>
-  </div>
-);
-
 export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
   visitId,
   isOpen,
@@ -199,175 +187,284 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
           {isLoading ? (
             <div className="text-center py-20 text-[13px] text-[#64748B]">Loading report…</div>
           ) : reportData ? (
-            <div className="max-w-[210mm] mx-auto bg-white border border-[#E2E8F0] px-8 py-7 text-[12px] leading-5 text-black print:border-0 print:p-0 print:max-w-none">
-              {/* Letterhead */}
-              <header className="flex items-center gap-4 pb-3 border-b-2 border-[#0F766E] print:border-black">
-                {hospital?.logo_url && (
-                  <img
-                    src={hospital.logo_url}
-                    alt=""
-                    className="h-16 w-auto object-contain shrink-0"
-                  />
-                )}
-                <div className="flex-1 text-center">
-                  <h1 className="text-2xl font-bold leading-7">
-                    {hospital?.hospital_name || 'Diagnostic Laboratory'}
-                  </h1>
-                  {hospital?.address && <p className="text-[12px] mt-0.5">{hospital.address}</p>}
-                  {(phones || hospital?.email) && (
-                    <p className="text-[12px]">
-                      {phones && `Phone: ${phones}`}
-                      {phones && hospital?.email && '   |   '}
-                      {hospital?.email}
-                    </p>
-                  )}
-                </div>
-                {hospital?.logo_url && <div className="w-16 shrink-0" aria-hidden="true" />}
-              </header>
-
-              {/* Patient and visit details */}
-              <section className="mt-3 border border-slate-400 rounded">
-                <dl className="grid grid-cols-2 divide-x divide-slate-300 px-3 py-1.5">
-                  <div className="pr-4">
-                    <InfoRow label="MR no." mono>
-                      {reportData.patient.patient_mrn}
-                    </InfoRow>
-                    <InfoRow label="Patient name">
-                      <span className="font-semibold">{reportData.patient.full_name}</span>
-                    </InfoRow>
-                    <InfoRow label="Age / sex">
-                      <span className="capitalize">
-                        {ageInfo ? ageInfo.formatted : 'Age not recorded'} / {reportData.patient.gender}
-                      </span>
-                    </InfoRow>
-                    <InfoRow label="Phone">{reportData.patient.phone_number || '—'}</InfoRow>
-                  </div>
-
-                  <div className="pl-4">
-                    <InfoRow label="Report no." mono>
-                      {snapshot?.report_number || `VISIT-${reportData.visit.visit_number}`}
-                    </InfoRow>
-                    <InfoRow label="Visit no." mono>
-                      {reportData.visit.visit_number}
-                    </InfoRow>
-                    <InfoRow label="Visit date">{formatDateTime(reportData.visit.order_date)}</InfoRow>
-                    <InfoRow label="Printed on">{formatDateTime(new Date().toISOString())}</InfoRow>
-                  </div>
-                </dl>
-              </section>
-
-              {/* Results, one block per test (skips un-entered parameters) */}
-              <div className="mt-4 space-y-5">
-                {reportData.tests.map((testEntry) => {
-                  const filledResults = testEntry.results.filter(
-                    (pr) => pr.result && pr.result.result_value != null && pr.result.result_value.trim() !== ''
-                  );
-
-                  if (filledResults.length === 0) return null;
-
-                  return (
-                    <section key={testEntry.orderItem.id}>
-                      <div className="flex items-baseline justify-between border-b border-black pb-1">
-                        <h2 className="text-[14px] font-bold">
-                          {testEntry.orderItem.test_name_snapshot}
-                        </h2>
-                        <span className="text-[11px] text-slate-600">
-                          {testEntry.orderItem.test_code_snapshot}
-                        </span>
+            <div
+              className="max-w-[210mm] mx-auto bg-white border border-[#E2E8F0] shadow-sm text-[12px] leading-5 text-[#1e293b] print:border-0 print:p-0 print:max-w-none print:shadow-none"
+              style={{
+                fontFamily: reportData.template?.style?.fontFamily || 'Arial, sans-serif',
+                fontSize: reportData.template?.style?.fontSize ? `${reportData.template.style.fontSize}pt` : undefined,
+              }}
+            >
+              {/* Report Header: Template Design Banner */}
+              {reportData.template ? (
+                <>
+                  <header
+                    className="p-4 flex items-center gap-4 text-white print:[-webkit-print-color-adjust:exact]"
+                    style={{ background: reportData.template.header.color || '#124779' }}
+                  >
+                    {reportData.template.header.showLogo && (reportData.template.header.logoDataUrl || hospital?.logo_url) && (
+                      <img
+                        src={reportData.template.header.logoDataUrl || hospital?.logo_url || ''}
+                        alt="Logo"
+                        className="w-16 h-16 object-contain bg-white p-1 rounded shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h1 className="text-xl font-extrabold leading-tight tracking-wide text-white">
+                        {reportData.template.header.hospitalName || hospital?.hospital_name || 'AL-SHIFA MEDICAL CENTER'}
+                      </h1>
+                      <div className="text-xs font-bold tracking-wider text-[#a5f3fc] mt-0.5">
+                        {reportData.template.header.reportTitle || 'LAB TEST REPORT'}
                       </div>
+                      <div className="text-xs font-semibold text-[#fde047] mt-0.5">
+                        Under Supervision of: {reportData.template.header.supervisor || 'Dr. Saad Khan'}
+                      </div>
+                    </div>
+                    {reportData.template.header.showBadge !== false && (
+                      <div className="bg-[#05a9a7] text-white px-3 py-2 rounded-lg font-bold text-xs text-center min-w-[100px] shrink-0 print:[-webkit-print-color-adjust:exact]">
+                        {reportData.template.header.badgeText || '24 Ghantay Service'}
+                      </div>
+                    )}
+                  </header>
 
-                      <table className="w-full border-collapse text-left">
-                        <thead>
-                          <tr className="text-[11px] font-semibold text-slate-700 border-b border-slate-400">
-                            <th scope="col" className="py-1.5 pr-3 w-[34%]">
-                              Test
-                            </th>
-                            <th scope="col" className="py-1.5 pr-3 w-[18%]">
-                              Result
-                            </th>
-                            <th scope="col" className="py-1.5 pr-3">
-                              Reference range
-                            </th>
-                            <th scope="col" className="py-1.5 w-[14%]">
-                              Unit
-                            </th>
-                            {showAmendColumn && (
-                              <th scope="col" className="py-1.5 w-14 text-center print:hidden">
-                                <span className="sr-only">Amend</span>
-                              </th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filledResults.map((pr) => {
-                            const flag = pr.flag;
-                            const isCritical = flag === 'critical';
-                            const isHigh = flag === 'high';
-                            const isLow = flag === 'low';
-                            const abnormal = isCritical || isHigh || isLow;
+                  {/* Accent Stripe */}
+                  <div
+                    className="h-1.5 print:[-webkit-print-color-adjust:exact]"
+                    style={{ background: reportData.template.header.accentColor || '#079b98' }}
+                  />
 
-                            return (
+                  {/* Contact line */}
+                  <div className="px-5 py-2 border-b border-slate-300 text-[11px] text-slate-700 leading-normal">
+                    <div className="font-semibold">{reportData.template.header.address || hospital?.address}</div>
+                    <div>
+                      Phone: {reportData.template.header.phone || hospital?.phone_primary} &nbsp;|&nbsp; Mob: {reportData.template.header.mobile} &nbsp;|&nbsp; WhatsApp: {reportData.template.header.whatsapp}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <header className="flex items-center gap-4 p-5 pb-3 border-b-2 border-[#0F766E] print:border-black">
+                  {hospital?.logo_url && (
+                    <img
+                      src={hospital.logo_url}
+                      alt=""
+                      className="h-16 w-auto object-contain shrink-0"
+                    />
+                  )}
+                  <div className="flex-1 text-center">
+                    <h1 className="text-2xl font-bold leading-7">
+                      {hospital?.hospital_name || 'Diagnostic Laboratory'}
+                    </h1>
+                    {hospital?.address && <p className="text-[12px] mt-0.5">{hospital.address}</p>}
+                    {(phones || hospital?.email) && (
+                      <p className="text-[12px]">
+                        {phones && `Phone: ${phones}`}
+                        {phones && hospital?.email && '   |   '}
+                        {hospital?.email}
+                      </p>
+                    )}
+                  </div>
+                  {hospital?.logo_url && <div className="w-16 shrink-0" aria-hidden="true" />}
+                </header>
+              )}
+
+              {/* Main Report Body Padding */}
+              <div className="p-5 pt-3 space-y-4">
+                {/* Patient and visit details box */}
+                <section className="border border-slate-400 rounded-xs overflow-hidden">
+                  <div className="bg-[#d6edf3] px-3 py-1 text-[11px] font-bold text-[#0f3e74] uppercase tracking-wider print:[-webkit-print-color-adjust:exact]">
+                    Patient Details
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 p-2 text-[11px] leading-relaxed">
+                    <span className="p-1 border-b border-slate-100">
+                      Patient Name: <strong className="font-bold text-black">{reportData.patient.full_name}</strong>
+                    </span>
+                    <span className="p-1 border-b border-slate-100">
+                      Age / Gender: <strong>{ageInfo ? ageInfo.formatted : 'Age not recorded'} / {reportData.patient.gender}</strong>
+                    </span>
+                    <span className="p-1 border-b border-slate-100">
+                      Date: <strong>{formatDateTime(reportData.visit.order_date)}</strong>
+                    </span>
+                    <span className="p-1 border-b border-slate-100">
+                      Report No.: <strong>{snapshot?.report_number || `REP-${reportData.visit.visit_number}`}</strong>
+                    </span>
+                    <span className="p-1 border-b border-slate-100">
+                      MR No.: <strong>{reportData.patient.patient_mrn}</strong>
+                    </span>
+                    <span className="p-1 border-b border-slate-100">
+                      Phone: <strong>{reportData.patient.phone_number || '—'}</strong>
+                    </span>
+                    <span className="p-1 border-b border-slate-100 sm:border-b-0 col-span-2">
+                      Referring Physician: <strong>{reportData.doctor?.full_name || reportData.template?.header.supervisor || 'Dr. Saad Khan'}</strong>
+                    </span>
+                    {/* <span className="p-1">
+                      Sample Collected: <strong>Whole Blood / Specimen</strong>
+                    </span> */}
+                  </div>
+                </section>
+
+                {/* Lab Test Results */}
+                <section className="border border-slate-400 rounded-xs overflow-hidden">
+                  <div className="bg-[#d6edf3] px-3 py-1 text-[11px] font-bold text-[#0f3e74] uppercase tracking-wider print:[-webkit-print-color-adjust:exact]">
+                    Lab Test Results
+                  </div>
+                  <div className="p-2 space-y-4">
+                    {reportData.tests.map((testEntry) => {
+                      const filledResults = testEntry.results.filter(
+                        (pr) => pr.result && pr.result.result_value != null && pr.result.result_value.trim() !== ''
+                      );
+
+                      if (filledResults.length === 0) return null;
+
+                      const visibleCols = reportData.template?.columns?.filter((c) => c.visible) || [
+                        { key: 'testName', label: 'Test Name', visible: true },
+                        { key: 'result', label: 'Result', visible: true },
+                        { key: 'normalRange', label: 'Normal Range', visible: true },
+                        { key: 'unit', label: 'Unit', visible: true },
+                      ];
+
+                      return (
+                        <div key={testEntry.orderItem.id} className="space-y-1">
+                          <div className="flex items-baseline justify-between border-b border-[#0f766e] pb-0.5">
+                            <h2 className="text-[13px] font-bold text-slate-900">
+                              {testEntry.orderItem.test_name_snapshot}
+                            </h2>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              {testEntry.orderItem.test_code_snapshot}
+                            </span>
+                          </div>
+
+                          <table className="w-full border-collapse text-left text-[11px]">
+                            <thead>
                               <tr
-                                key={pr.parameter.id}
-                                className="border-b border-slate-200 print:break-inside-avoid"
+                                className="text-white print:[-webkit-print-color-adjust:exact]"
+                                style={{ background: reportData.template?.header.accentColor || '#079b98' }}
                               >
-                                <td className="py-1.5 pr-3 font-medium">{pr.parameter.name}</td>
-
-                                <td
-                                  className={`py-1.5 pr-3 tabular-nums ${
-                                    abnormal ? 'font-bold' : 'font-medium'
-                                  }`}
-                                >
-                                  {pr.result ? (
-                                    <>
-                                      {pr.result.result_value}
-                                      {isCritical && (
-                                        <span className="ml-2 border border-black px-1 text-[10px] font-bold uppercase">
-                                          Critical
-                                        </span>
-                                      )}
-                                      {isHigh && <span className="ml-2 text-[11px]">H</span>}
-                                      {isLow && <span className="ml-2 text-[11px]">L</span>}
-                                    </>
-                                  ) : (
-                                    <span className="font-normal italic text-slate-500">Pending</span>
-                                  )}
-                                </td>
-
-                                <td className="py-1.5 pr-3 text-slate-700">
-                                  {pr.referenceRangeDisplay || '—'}
-                                </td>
-                                <td className="py-1.5 text-slate-700">{pr.parameter.unit || ''}</td>
-
+                                {visibleCols.map((col) => (
+                                  <th key={col.key} scope="col" className="py-1 px-2.5 font-bold uppercase text-[10px]">
+                                    {col.label}
+                                  </th>
+                                ))}
                                 {showAmendColumn && (
-                                  <td className="py-1.5 text-center print:hidden">
-                                    {pr.result && (
-                                      <button
-                                        type="button"
-                                        onClick={() => onOpenAmendment!(pr.result!.id)}
-                                        className="text-[12px] font-medium text-[#0F766E] hover:text-[#115E59] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded-sm"
-                                      >
-                                        Amend
-                                      </button>
-                                    )}
-                                  </td>
+                                  <th scope="col" className="py-1 px-2 w-14 text-center print:hidden">
+                                    <span className="sr-only">Amend</span>
+                                  </th>
                                 )}
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </section>
-                  );
-                })}
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {filledResults.map((pr) => {
+                                const flag = pr.flag;
+                                const isCritical = flag === 'critical';
+                                const isHigh = flag === 'high';
+                                const isLow = flag === 'low';
+                                const abnormal = isCritical || isHigh || isLow;
+
+                                let statusText = 'Normal';
+                                if (isCritical) statusText = 'Critical';
+                                else if (isHigh) statusText = 'High';
+                                else if (isLow) statusText = 'Low';
+
+                                return (
+                                  <tr key={pr.parameter.id} className="hover:bg-slate-50/50 print:break-inside-avoid">
+                                    {visibleCols.map((col) => {
+                                      if (col.key === 'testName') {
+                                        return (
+                                          <td key={col.key} className="py-1.5 px-2.5 font-medium text-slate-900">
+                                            {pr.parameter.name}
+                                          </td>
+                                        );
+                                      }
+                                      if (col.key === 'result') {
+                                        return (
+                                          <td key={col.key} className={`py-1.5 px-2.5 tabular-nums ${abnormal ? 'font-bold text-black' : 'font-medium'}`}>
+                                            {pr.result?.result_value}
+                                          </td>
+                                        );
+                                      }
+                                      if (col.key === 'unit') {
+                                        return (
+                                          <td key={col.key} className="py-1.5 px-2.5 text-slate-600">
+                                            {pr.parameter.unit || '—'}
+                                          </td>
+                                        );
+                                      }
+                                      if (col.key === 'normalRange') {
+                                        return (
+                                          <td key={col.key} className="py-1.5 px-2.5 text-slate-700">
+                                            {pr.referenceRangeDisplay || '—'}
+                                          </td>
+                                        );
+                                      }
+                                      if (col.key === 'status') {
+                                        return (
+                                          <td
+                                            key={col.key}
+                                            className={`py-1.5 px-2.5 font-bold ${
+                                              abnormal ? 'text-red-700' : 'text-emerald-700'
+                                            }`}
+                                          >
+                                            {statusText}
+                                          </td>
+                                        );
+                                      }
+                                      return <td key={col.key} className="py-1.5 px-2.5">—</td>;
+                                    })}
+
+                                    {showAmendColumn && (
+                                      <td className="py-1 px-2 text-center print:hidden">
+                                        {pr.result && (
+                                          <button
+                                            type="button"
+                                            onClick={() => onOpenAmendment!(pr.result!.id)}
+                                            className="text-[11px] font-medium text-[#0F766E] hover:underline"
+                                          >
+                                            Amend
+                                          </button>
+                                        )}
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                {/* Observations Section */}
+                {reportData.template?.observations?.visible !== false && (
+                  <section className="border border-slate-400 rounded-xs overflow-hidden print:break-inside-avoid">
+                    <div className="bg-[#d6edf3] px-3 py-1 text-[11px] font-bold text-[#0f3e74] uppercase tracking-wider print:[-webkit-print-color-adjust:exact]">
+                      {reportData.template?.observations?.title || 'COMPUTER TEST RESULTS / OBSERVATIONS'}
+                    </div>
+                    <div className="p-3 text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed min-h-[50px]">
+                      {reportData.template?.observations?.defaultText ||
+                        'Specimen processed on automated clinical pathology analyzers. All calibration and internal quality control values within acceptable limits. Test results to be clinically correlated with patient symptoms.'}
+                    </div>
+                  </section>
+                )}
               </div>
 
-              {/* Computer generated disclaimer footer */}
-              <footer className="mt-8 pt-4 border-t border-slate-300 text-center print:break-inside-avoid">
-                <p className="text-[12px] font-medium text-slate-800">
-                  This is a computer-generated report, therefore it does not require any signature.
-                </p>
-              </footer>
+              {/* Footer Banner */}
+              {reportData.template?.footer?.visible !== false ? (
+                <footer
+                  className="mt-6 px-5 py-3 text-white flex justify-between items-center text-[11px] font-medium print:break-inside-avoid print:[-webkit-print-color-adjust:exact]"
+                  style={{ background: reportData.template?.footer?.color || '#124779' }}
+                >
+                  <span className="max-w-[70%]">
+                    {reportData.template?.footer?.text || 'Thank you for trusting AL-SHIFA MEDICAL CENTER | Dr. Saad Khan'}
+                  </span>
+                  <span>
+                    {reportData.template?.footer?.rightText || 'AL-SHIFA | Dr. Saad Khan'}
+                  </span>
+                </footer>
+              ) : (
+                <div className="py-4 text-center text-xs text-slate-500 border-t border-slate-200">
+                  This is a computer-generated report.
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-20 text-[13px]">

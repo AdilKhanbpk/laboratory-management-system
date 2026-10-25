@@ -295,6 +295,62 @@ export interface AuditQueryResult {
   hasMore: boolean;
 }
 
+export interface ReportTemplateColumn {
+  key: string;
+  label: string;
+  visible: boolean;
+}
+
+export interface ReportTemplateHeader {
+  logoDataUrl: string;
+  hospitalName: string;
+  reportTitle: string;
+  supervisor: string;
+  address: string;
+  phone: string;
+  mobile: string;
+  whatsapp: string;
+  badgeText?: string;
+  showBadge?: boolean;
+  showLogo: boolean;
+  color: string;
+  accentColor: string;
+  align: 'left' | 'center';
+}
+
+export interface ReportTemplateObservations {
+  visible: boolean;
+  title: string;
+  defaultText: string;
+}
+
+export interface ReportTemplateFooter {
+  visible: boolean;
+  text: string;
+  rightText: string;
+  color: string;
+}
+
+export interface ReportTemplateStyle {
+  fontFamily: string;
+  fontSize: number;
+  showPatientBox: boolean;
+}
+
+export interface ReportTemplate {
+  id: string;
+  name: string;
+  active: boolean;
+  header: ReportTemplateHeader;
+  patientFields: string[];
+  columns: ReportTemplateColumn[];
+  observations: ReportTemplateObservations;
+  footer: ReportTemplateFooter;
+  style: ReportTemplateStyle;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface DoctorReferralStats {
   doctorId: number;
   doctorName: string;
@@ -493,6 +549,7 @@ export interface FullDiagnosticReport {
   amendments?: ResultAmendment[];
   editorInfo?: ReportEditorInfo | null;
   editHistory?: ReportHistoryEntry[];
+  template?: ReportTemplate | null;
 }
 
 export interface PatientHistoryItem {
@@ -773,6 +830,13 @@ export interface ElectronAPI {
   audit: {
     getRecent: (limit?: number) => Promise<IpcResponse<AuditLogEntry[]>>;
     query: (params?: { startDate?: string; endDate?: string; limit?: number; offset?: number }) => Promise<IpcResponse<AuditQueryResult>>;
+  };
+  templates: {
+    list: () => Promise<IpcResponse<ReportTemplate[]>>;
+    getActive: () => Promise<IpcResponse<ReportTemplate>>;
+    save: (template: ReportTemplate) => Promise<IpcResponse<ReportTemplate>>;
+    activate: (id: string) => Promise<IpcResponse<boolean>>;
+    delete: (id: string) => Promise<IpcResponse<boolean>>;
   };
   app: {
     getInfo: () => Promise<IpcResponse<AppInfo>>;

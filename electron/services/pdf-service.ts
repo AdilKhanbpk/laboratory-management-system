@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog } from 'electron';
 import fs from 'fs';
 import { FullDiagnosticReport } from '../types/ipc';
+import { DEFAULT_REPORT_TEMPLATE } from '../database/repositories/template-repository';
 
 function escapeHtml(str: string | null | undefined): string {
   if (!str) return '';
@@ -66,15 +67,18 @@ export class PdfService {
    * - Centered computer-generated disclaimer footer
    */
   public static generateReportHtml(reportData: FullDiagnosticReport): string {
+    const template = reportData.template || DEFAULT_REPORT_TEMPLATE;
+    const header = template.header;
     const hospital = reportData.hospital;
-    const phones = [hospital?.phone_primary, hospital?.phone_secondary].filter(Boolean).join(' / ');
-    const contactLine = [phones ? `Phone: ${phones}` : '', hospital?.email ? hospital.email : '']
-      .filter(Boolean)
-      .join('  |  ');
-
     const patient = reportData.patient;
     const visit = reportData.visit;
     const snapshot = reportData.snapshot;
+
+    const logoSrc = header.showLogo
+      ? header.logoDataUrl || hospital?.logo_url || ''
+      : '';
+    const showBadge = header.showBadge !== false && Boolean(header.badgeText);
+    const visibleCols = template.columns.filter((c) => c.visible);
 
     const testsHtml = reportData.tests
       .map((testEntry) => {
@@ -92,25 +96,34 @@ export class PdfService {
             const isLow = flag === 'low';
             const abnormal = isCritical || isHigh || isLow;
 
-            let flagBadge = '';
-            if (isCritical) {
-              flagBadge = '<span class="badge-critical">Critical</span>';
-            } else if (isHigh) {
-              flagBadge = '<span class="badge-high">H</span>';
-            } else if (isLow) {
-              flagBadge = '<span class="badge-low">L</span>';
-            }
+            let statusText = 'Normal';
+            if (isCritical) statusText = 'Critical';
+            else if (isHigh) statusText = 'High';
+            else if (isLow) statusText = 'Low';
 
-            const valDisplay = `<span class="${abnormal ? 'val-abnormal' : 'val-normal'}">${escapeHtml(pr.result!.result_value)}</span>${flagBadge}`;
+            const tds = visibleCols
+              .map((col) => {
+                if (col.key === 'testName') {
+                  return `<td class="param-name">${escapeHtml(pr.parameter.name)}</td>`;
+                }
+                if (col.key === 'result') {
+                  return `<td class="param-result ${abnormal ? 'val-abnormal' : 'val-normal'}">${escapeHtml(pr.result!.result_value)}</td>`;
+                }
+                if (col.key === 'unit') {
+                  return `<td class="param-unit">${escapeHtml(pr.parameter.unit || '—')}</td>`;
+                }
+                if (col.key === 'normalRange') {
+                  return `<td class="param-range">${escapeHtml(pr.referenceRangeDisplay || '—')}</td>`;
+                }
+                if (col.key === 'status') {
+                  const statusClass = statusText.toLowerCase();
+                  return `<td class="param-status status-${statusClass}">${statusText}</td>`;
+                }
+                return `<td>—</td>`;
+              })
+              .join('');
 
-            return `
-              <tr>
-                <td class="param-name">${escapeHtml(pr.parameter.name)}</td>
-                <td class="param-result">${valDisplay}</td>
-                <td class="param-range">${escapeHtml(pr.referenceRangeDisplay || '—')}</td>
-                <td class="param-unit">${escapeHtml(pr.parameter.unit || '')}</td>
-              </tr>
-            `;
+            return `<tr>${tds}</tr>`;
           })
           .join('');
 
@@ -123,10 +136,7 @@ export class PdfService {
             <table class="results-table">
               <thead>
                 <tr>
-                  <th style="width: 38%;">Test</th>
-                  <th style="width: 22%;">Result</th>
-                  <th style="width: 25%;">Reference range</th>
-                  <th style="width: 15%;">Unit</th>
+                  ${visibleCols.map((c) => `<th style="background: ${header.accentColor || '#079b98'};">${escapeHtml(c.label)}</th>`).join('')}
                 </tr>
               </thead>
               <tbody>
@@ -139,6 +149,37 @@ export class PdfService {
       .filter(Boolean)
       .join('');
 
+    const patientGridHtml = template.style.showPatientBox !== false ? `
+      <div class="section-box">
+        <div class="section-title">PATIENT DETAILS</div>
+        <div class="patient-grid">
+          <span>Patient Name: <b>${escapeHtml(patient.full_name)}</b></span>
+          <span>Age / Gender: <b>${formatAge(patient.date_of_birth)} / ${escapeHtml(patient.gender)}</b></span>
+          <span>Date: <b>${formatReportDate(visit.order_date)}</b></span>
+          <span>Report No.: <b>${escapeHtml(snapshot?.report_number || `REP-${visit.visit_number}`)}</b></span>
+          <span>C/O No.: <b>${escapeHtml(patient.patient_mrn)}</b></span>
+          <span>S/O, D/O, W/O: <b>—</b></span>
+          <span>Referring Physician: <b>${escapeHtml(reportData.doctor?.full_name || header.supervisor || 'Dr. Saad Khan')}</b></span>
+        </div>
+      </div>
+    ` : '';
+
+    const observationsHtml = template.observations?.visible ? `
+      <div class="section-box">
+        <div class="section-title">${escapeHtml(template.observations.title || 'COMPUTER TEST RESULTS / OBSERVATIONS')}</div>
+        <div class="observations-body">
+          ${escapeHtml(template.observations.defaultText || 'Specimen processed on automated clinical pathology analyzers. All calibration and internal quality control values within acceptable limits. Test results to be clinically correlated with patient symptoms.')}
+        </div>
+      </div>
+    ` : '';
+
+    const footerHtml = template.footer?.visible ? `
+      <div class="report-footer" style="background: ${template.footer.color || '#124779'};">
+        <span>${escapeHtml(template.footer.text || '')}</span>
+        <span>${escapeHtml(template.footer.rightText || '')}</span>
+      </div>
+    ` : '';
+
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -147,7 +188,7 @@ export class PdfService {
   <style>
     @page {
       size: A4;
-      margin: 12mm 15mm 15mm 15mm;
+      margin: 10mm 12mm 10mm 12mm;
     }
     * {
       box-sizing: border-box;
@@ -155,253 +196,229 @@ export class PdfService {
       padding: 0;
     }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      color: #000;
-      background: #fff;
-      font-size: 12px;
-      line-height: 1.5;
-      padding: 10px;
+      font-family: ${template.style.fontFamily || 'Arial'}, -apple-system, sans-serif;
+      font-size: ${template.style.fontSize || 10}pt;
+      line-height: 1.35;
+      color: #1e293b;
+      background: #ffffff;
+      padding: 0;
     }
-    .letterhead {
-      border-bottom: 2px solid #0F766E;
-      padding-bottom: 12px;
-      margin-bottom: 14px;
+    .report-header {
+      min-height: 90px;
+      color: #ffffff;
+      padding: 12px 16px;
       display: flex;
       align-items: center;
-      justify-content: center;
-      position: relative;
-    }
-    .logo-container {
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 12px;
-      display: flex;
-      align-items: center;
+      gap: 14px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .logo-img {
-      max-height: 65px;
-      max-width: 140px;
+      width: 70px;
+      height: 70px;
       object-fit: contain;
-    }
-    .letterhead-content {
-      text-align: center;
-      width: 100%;
-    }
-    .letterhead-content h1 {
-      font-size: 24px;
-      font-weight: 800;
-      color: #0F172A;
-      margin-bottom: 3px;
-      letter-spacing: -0.3px;
-    }
-    .letterhead-content p {
-      font-size: 11px;
-      color: #475569;
-      margin: 1px 0;
-    }
-    .patient-card {
-      border: 1px solid #94A3B8;
+      background: #ffffff;
+      padding: 4px;
       border-radius: 4px;
-      padding: 8px 12px;
-      margin-bottom: 16px;
-      display: table;
-      width: 100%;
+      flex-shrink: 0;
     }
-    .patient-col {
-      display: table-cell;
-      width: 50%;
-      vertical-align: top;
+    .header-text {
+      flex: 1;
     }
-    .patient-col:first-child {
-      padding-right: 12px;
-      border-right: 1px solid #CBD5E1;
+    .hospital-name {
+      font-weight: 800;
+      font-size: 22px;
+      line-height: 1.2;
+      color: #ffffff;
     }
-    .patient-col:last-child {
-      padding-left: 12px;
+    .report-title {
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      color: #a5f3fc;
+      margin-top: 2px;
     }
-    .info-row {
-      display: table;
-      width: 100%;
-      margin: 2px 0;
-      font-size: 11px;
-    }
-    .info-label {
-      display: table-cell;
-      width: 95px;
-      color: #64748B;
-    }
-    .info-val {
-      display: table-cell;
-      color: #000;
-      font-weight: 500;
-    }
-    .info-val-bold {
-      display: table-cell;
-      color: #000;
+    .supervisor-line {
       font-weight: 700;
+      font-size: 13px;
+      margin-top: 3px;
+      color: #fde047;
+    }
+    .service-badge {
+      background: #05a9a7;
+      color: #ffffff;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-weight: 700;
+      font-size: 12px;
+      text-align: center;
+      min-width: 105px;
+      line-height: 1.25;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .accent-line {
+      height: 6px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .contact-line {
+      font-size: 10.5px;
+      padding: 6px 4px 8px;
+      border-bottom: 1px solid #94a3b8;
+      line-height: 1.45;
+      color: #334155;
+    }
+    .section-box {
+      margin-top: 10px;
+      border: 1px solid #94a3b8;
+      page-break-inside: avoid;
+    }
+    .section-title {
+      background: #d6edf3;
+      padding: 4px 8px;
+      color: #0f3e74;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .patient-grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr 1fr;
+      padding: 6px 8px;
+      font-size: 10.5px;
+    }
+    .patient-grid span {
+      padding: 3px 2px;
+      border-bottom: 1px solid #f1f5f9;
     }
     .test-block {
-      margin-bottom: 18px;
+      margin-top: 8px;
       page-break-inside: avoid;
     }
     .test-header {
-      border-bottom: 1px solid #000;
-      padding-bottom: 3px;
-      margin-bottom: 6px;
+      border-bottom: 1px solid #0f766e;
+      padding: 2px 4px;
+      margin-bottom: 4px;
       display: flex;
       justify-content: space-between;
       align-items: baseline;
     }
     .test-title {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
-      color: #000;
+      color: #0f172a;
     }
     .test-code {
-      font-size: 11px;
-      color: #64748B;
+      font-size: 10px;
+      color: #64748b;
     }
     .results-table {
       width: 100%;
       border-collapse: collapse;
-      text-align: left;
-      font-size: 12px;
+      font-size: 10.5px;
     }
     .results-table th {
-      font-size: 11px;
-      font-weight: 600;
-      color: #334155;
-      border-bottom: 1px solid #94A3B8;
+      color: #ffffff;
+      text-align: left;
       padding: 5px 6px;
-      background: #FAFAFA;
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .results-table td {
-      padding: 5px 6px;
-      border-bottom: 1px solid #E2E8F0;
+      border: 1px solid #cbd5e1;
+      padding: 4px 6px;
+      font-size: 10.5px;
     }
     .param-name {
-      font-weight: 500;
-      color: #0F172A;
+      font-weight: 600;
+      color: #0f172a;
     }
     .param-result {
       font-variant-numeric: tabular-nums;
     }
     .val-normal {
       font-weight: 500;
-      color: #000;
+      color: #1e293b;
     }
     .val-abnormal {
       font-weight: 700;
-      color: #000;
+      color: #000000;
     }
-    .val-pending {
-      color: #94A3B8;
-      font-style: italic;
-    }
-    .badge-high, .badge-low {
-      display: inline-block;
-      margin-left: 6px;
+    .status-high, .status-low, .status-critical {
       font-weight: 700;
-      font-size: 11px;
-      color: #000;
+      color: #b91c1c;
     }
-    .badge-critical {
-      display: inline-block;
-      margin-left: 6px;
-      font-size: 9px;
-      font-weight: 800;
-      text-transform: uppercase;
-      border: 1px solid #000;
-      padding: 0 3px;
-      border-radius: 2px;
-      color: #000;
+    .status-normal {
+      font-weight: 700;
+      color: #15803d;
     }
-    .param-range {
-      color: #334155;
+    .observations-body {
+      padding: 8px 10px;
+      font-size: 10.5px;
+      color: #475467;
+      min-height: 48px;
+      white-space: pre-wrap;
     }
-    .param-unit {
-      color: #475569;
-    }
-    .footer {
-      margin-top: 36px;
-      padding-top: 14px;
-      border-top: 1px solid #CBD5E1;
-      text-align: center;
+    .report-footer {
+      margin-top: 18px;
+      min-height: 44px;
+      color: #ffffff;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10.5px;
+      font-weight: 500;
       page-break-inside: avoid;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
-    .disclaimer {
-      font-size: 11px;
-      font-weight: 600;
-      color: #334155;
-    }
-    .verification {
-      font-size: 10px;
-      color: #94A3B8;
-      margin-top: 4px;
-      font-family: monospace;
+    .report-footer span {
+      max-width: 65%;
+      overflow-wrap: anywhere;
     }
   </style>
 </head>
 <body>
-  <!-- Header / Letterhead with Hospital Logo (No Tagline) -->
-  <div class="letterhead">
-    ${hospital?.logo_url ? `<div class="logo-container"><img src="${hospital.logo_url}" class="logo-img" alt="Logo" /></div>` : ''}
-    <div class="letterhead-content">
-      <h1>${escapeHtml(hospital?.hospital_name || 'Diagnostic Laboratory')}</h1>
-      ${hospital?.address ? `<p>${escapeHtml(hospital.address)}</p>` : ''}
-      ${contactLine ? `<p>${escapeHtml(contactLine)}</p>` : ''}
+  <!-- Header / Letterhead with 5 lines & Logo -->
+  <div class="report-header" style="background: ${header.color || '#124779'};">
+    ${logoSrc ? `<img src="${logoSrc}" class="logo-img" alt="Logo" />` : ''}
+    <div class="header-text">
+      <div class="hospital-name">${escapeHtml(header.hospitalName || hospital?.hospital_name || 'AL-SHIFA MEDICAL CENTER')}</div>
+      <div class="report-title">${escapeHtml(header.reportTitle || 'LAB TEST REPORT')}</div>
+      <div class="supervisor-line">Under Supervision of: ${escapeHtml(header.supervisor || 'Dr. Saad Khan')}</div>
+    </div>
+    ${showBadge ? `<div class="service-badge">${escapeHtml(header.badgeText || '24 Ghantay Service')}</div>` : ''}
+  </div>
+  <div class="accent-line" style="background: ${header.accentColor || '#079b98'};"></div>
+  <div class="contact-line">
+    <div style="font-weight: 600;">${escapeHtml(header.address || hospital?.address || '')}</div>
+    <div>Phone: ${escapeHtml(header.phone || hospital?.phone_primary || '')} &nbsp;|&nbsp; Mob: ${escapeHtml(header.mobile || '')} &nbsp;|&nbsp; WhatsApp: ${escapeHtml(header.whatsapp || '')}</div>
+  </div>
+
+  <!-- Patient Details -->
+  ${patientGridHtml}
+
+  <!-- Test Results -->
+  <div class="section-box" style="margin-top: 10px;">
+    <div class="section-title">LAB TEST RESULTS</div>
+    <div style="padding: 6px 8px;">
+      ${testsHtml}
     </div>
   </div>
 
-  <!-- Patient and visit details (No Referred By, No Status) -->
-  <div class="patient-card">
-    <div class="patient-col">
-      <div class="info-row">
-        <span class="info-label">MR no.</span>
-        <span class="info-val-bold">${escapeHtml(patient.patient_mrn)}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Patient name</span>
-        <span class="info-val-bold">${escapeHtml(patient.full_name)}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Age / sex</span>
-        <span class="info-val">${formatAge(patient.date_of_birth)} / ${escapeHtml(patient.gender)}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Phone</span>
-        <span class="info-val">${escapeHtml(patient.phone_number || '—')}</span>
-      </div>
-    </div>
+  <!-- Observations -->
+  ${observationsHtml}
 
-    <div class="patient-col">
-      <div class="info-row">
-        <span class="info-label">Report no.</span>
-        <span class="info-val">${escapeHtml(snapshot?.report_number || `VISIT-${visit.visit_number}`)}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Visit no.</span>
-        <span class="info-val">${escapeHtml(visit.visit_number)}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Visit date</span>
-        <span class="info-val">${formatReportDate(visit.order_date)}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Printed on</span>
-        <span class="info-val">${formatReportDate(new Date().toISOString())}</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Test results -->
-  ${testsHtml}
-
-  <!-- Footer with Computer Generated Disclaimer (No signatures, No H/L explanation) -->
-  <div class="footer">
-    <p class="disclaimer">This is a computer-generated report, therefore it does not require any signature.</p>
-  </div>
+  <!-- Footer Banner -->
+  ${footerHtml}
 </body>
 </html>`;
   }

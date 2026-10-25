@@ -96,6 +96,13 @@ export const IPC_CHANNELS = {
   AUDIT_GET_RECENT: 'audit:get-recent',
   AUDIT_QUERY: 'audit:query',
 
+  // Report Templates Designer
+  TEMPLATES_LIST: 'templates:list',
+  TEMPLATES_GET_ACTIVE: 'templates:get-active',
+  TEMPLATES_SAVE: 'templates:save',
+  TEMPLATES_ACTIVATE: 'templates:activate',
+  TEMPLATES_DELETE: 'templates:delete',
+
   // System & App
   APP_GET_INFO: 'app:get-info',
   APP_CHECK_INTEGRITY: 'app:check-integrity',

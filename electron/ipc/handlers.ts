@@ -67,6 +67,7 @@ import { VisitRepository } from '../database/repositories/visit-repository';
 import { DoctorStatsRepository } from '../database/repositories/doctor-stats-repository';
 import { ResultRepository } from '../database/repositories/result-repository';
 import { PatientHistoryRepository } from '../database/repositories/patient-history-repository';
+import { TemplateRepository } from '../database/repositories/template-repository';
 import { PdfService } from '../services/pdf-service';
 import { BackupService } from '../services/backup-service';
 import { RestoreService } from '../services/restore-service';
@@ -95,6 +96,7 @@ export interface HandlerContext {
   resultRepo: ResultRepository;
   patientHistoryRepo: PatientHistoryRepository;
   migrationRunner: MigrationRunner;
+  templateRepo: TemplateRepository;
   logoService: LogoService;
   backupService: BackupService;
   restoreService: RestoreService;
@@ -1111,8 +1113,11 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       }
 
       const report = ctx.resultRepo.getFullDiagnosticReport(visitId);
-      if (report && report.hospital) {
-        report.hospital = attachLogoUrl(report.hospital, ctx.logoService) || report.hospital;
+      if (report) {
+        if (report.hospital) {
+          report.hospital = attachLogoUrl(report.hospital, ctx.logoService) || report.hospital;
+        }
+        report.template = ctx.templateRepo.getActiveTemplate();
       }
       return { success: true, data: report };
     } catch (err: any) {
@@ -1138,6 +1143,7 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       if (reportData.hospital) {
         reportData.hospital = attachLogoUrl(reportData.hospital, ctx.logoService) || reportData.hospital;
       }
+      reportData.template = ctx.templateRepo.getActiveTemplate();
 
       const result = await PdfService.exportReportPdf(
         mainWindow,
@@ -1475,6 +1481,79 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       return { success: true, data: result };
     } catch {
       return { success: false, error: 'Failed to query audit logs.' };
+    }
+  });
+
+  // 36. Report Templates Designer
+  ipcMain.handle(IPC_CHANNELS.TEMPLATES_LIST, async (): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const templates = ctx.templateRepo.getTemplates();
+      return { success: true, data: templates };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to list report templates.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TEMPLATES_GET_ACTIVE, async (): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const template = ctx.templateRepo.getActiveTemplate();
+      return { success: true, data: template };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to get active report template.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TEMPLATES_SAVE, async (_, template: any): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      if (!template || !template.name) return { success: false, error: 'Template name is required.' };
+      const saved = ctx.templateRepo.saveTemplate(template);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'REPORT_TEMPLATE_SAVED',
+        entityType: 'report_template',
+        entityId: saved.id,
+        details: { name: saved.name, active: saved.active },
+      });
+      return { success: true, data: saved };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to save report template.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TEMPLATES_ACTIVATE, async (_, id: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      if (typeof id !== 'string' || !id.trim()) return { success: false, error: 'Invalid template ID.' };
+      ctx.templateRepo.activateTemplate(id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'REPORT_TEMPLATE_ACTIVATED',
+        entityType: 'report_template',
+        entityId: id,
+      });
+      return { success: true, data: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to activate report template.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TEMPLATES_DELETE, async (_, id: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      if (typeof id !== 'string' || !id.trim()) return { success: false, error: 'Invalid template ID.' };
+      ctx.templateRepo.deleteTemplate(id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'REPORT_TEMPLATE_DELETED',
+        entityType: 'report_template',
+        entityId: id,
+      });
+      return { success: true, data: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to delete report template.' };
     }
   });
 

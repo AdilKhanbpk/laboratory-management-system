@@ -14,6 +14,7 @@ import { HospitalSettingsView } from './features/settings/HospitalSettingsView';
 import { AuditView } from './features/audit/AuditView';
 import { AccessionWorklistView } from './features/results/AccessionWorklistView';
 import { DoctorStatisticsView } from './features/reports/DoctorStatisticsView';
+import { ReportTemplateDesignerView } from './features/reports/ReportTemplateDesignerView';
 import { BackupRestoreView } from './features/backup/BackupRestoreView';
 import { DeveloperPortalView } from './features/developer/DeveloperPortalView';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -241,6 +242,8 @@ export const App: React.FC = () => {
             {activeTab === 'results' && <AccessionWorklistView />}
 
             {activeTab === 'reports' && <DoctorStatisticsView />}
+
+            {activeTab === 'report-designer' && <ReportTemplateDesignerView />}
 
             {activeTab === 'backup' && <BackupRestoreView />}
 

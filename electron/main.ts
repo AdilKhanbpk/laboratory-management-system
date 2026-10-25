@@ -14,6 +14,7 @@ import { VisitRepository } from './database/repositories/visit-repository';
 import { DoctorStatsRepository } from './database/repositories/doctor-stats-repository';
 import { ResultRepository } from './database/repositories/result-repository';
 import { PatientHistoryRepository } from './database/repositories/patient-history-repository';
+import { TemplateRepository } from './database/repositories/template-repository';
 import { LogoService } from './security/logo-service';
 import { wipeDatabaseAndSeedStandardCatalog } from './database/standard-catalog-seeder';
 import { BackupService } from './services/backup-service';
@@ -60,6 +61,7 @@ function initializeDatabase(): {
   doctorStatsRepo: DoctorStatsRepository;
   resultRepo: ResultRepository;
   patientHistoryRepo: PatientHistoryRepository;
+  templateRepo: TemplateRepository;
   logoService: LogoService;
   backupService: BackupService;
   restoreService: RestoreService;
@@ -114,6 +116,7 @@ function initializeDatabase(): {
   const doctorStatsRepo = new DoctorStatsRepository(manager);
   const resultRepo = new ResultRepository(manager);
   const patientHistoryRepo = new PatientHistoryRepository(manager);
+  const templateRepo = new TemplateRepository(manager);
   const logoService = new LogoService(userDataPath);
 
   const backupsDir = path.join(userDataPath, 'backups');
@@ -133,6 +136,7 @@ function initializeDatabase(): {
     doctorStatsRepo,
     resultRepo,
     patientHistoryRepo,
+    templateRepo,
     logoService,
     backupService,
     restoreService,
@@ -184,6 +188,7 @@ function createMainWindow(): void {
 
   mainWindow.once('ready-to-show', () => {
     if (mainWindow) {
+      mainWindow.maximize();
       mainWindow.show();
       mainWindow.focus();
     }

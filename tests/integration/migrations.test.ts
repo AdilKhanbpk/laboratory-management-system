@@ -32,11 +32,11 @@ describe('Integration: Database Migrations Runner', () => {
     const runner = new MigrationRunner(manager, migrationsDir);
 
     const result = runner.runPendingMigrations();
-    expect(result.appliedCount).toBe(7);
-    expect(result.latestVersion).toBe(7);
+    expect(result.appliedCount).toBe(8);
+    expect(result.latestVersion).toBe(8);
 
     const applied = runner.getAppliedMigrations();
-    expect(applied.length).toBe(7);
+    expect(applied.length).toBe(8);
     expect(applied[0].version).toBe(1);
     expect(applied[0].name).toBe('initial_schema');
     expect(applied[1].version).toBe(2);
@@ -51,12 +51,14 @@ describe('Integration: Database Migrations Runner', () => {
     expect(applied[5].name).toBe('user_permissions');
     expect(applied[6].version).toBe(7);
     expect(applied[6].name).toBe('backup_and_developer_settings');
+    expect(applied[7].version).toBe(8);
+    expect(applied[7].name).toBe('report_templates');
     expect(applied[0].checksum).toBeDefined();
 
     // Verify tables exist
     const db = manager.getDatabase();
     const tables = db.prepare(`
-      SELECT name FROM sqlite_master WHERE type='table' AND name IN ('app_users', 'hospital_settings', 'audit_logs', 'visits', 'invoices', 'order_items', 'payments', 'test_results', 'report_snapshots', 'result_amendments');
+      SELECT name FROM sqlite_master WHERE type='table' AND name IN ('app_users', 'hospital_settings', 'audit_logs', 'visits', 'invoices', 'order_items', 'payments', 'test_results', 'report_snapshots', 'result_amendments', 'report_templates');
     `).all() as Array<{ name: string }>;
 
     expect(tables.map((t) => t.name)).toContain('app_users');
@@ -69,6 +71,7 @@ describe('Integration: Database Migrations Runner', () => {
     expect(tables.map((t) => t.name)).toContain('test_results');
     expect(tables.map((t) => t.name)).toContain('report_snapshots');
     expect(tables.map((t) => t.name)).toContain('result_amendments');
+    expect(tables.map((t) => t.name)).toContain('report_templates');
 
     manager.close();
   });
@@ -78,11 +81,11 @@ describe('Integration: Database Migrations Runner', () => {
     const runner = new MigrationRunner(manager, migrationsDir);
 
     const run1 = runner.runPendingMigrations();
-    expect(run1.appliedCount).toBe(7);
+    expect(run1.appliedCount).toBe(8);
 
     const run2 = runner.runPendingMigrations();
     expect(run2.appliedCount).toBe(0);
-    expect(run2.latestVersion).toBe(7);
+    expect(run2.latestVersion).toBe(8);
 
     manager.close();
   });

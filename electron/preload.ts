@@ -115,6 +115,13 @@ const CHANNELS = {
   AUDIT_GET_RECENT: 'audit:get-recent',
   AUDIT_QUERY: 'audit:query',
 
+  // Report Templates Designer
+  TEMPLATES_LIST: 'templates:list',
+  TEMPLATES_GET_ACTIVE: 'templates:get-active',
+  TEMPLATES_SAVE: 'templates:save',
+  TEMPLATES_ACTIVATE: 'templates:activate',
+  TEMPLATES_DELETE: 'templates:delete',
+
   // System & App
   APP_GET_INFO: 'app:get-info',
   APP_CHECK_INTEGRITY: 'app:check-integrity',
@@ -221,6 +228,13 @@ const api: ElectronAPI = {
   audit: {
     getRecent: (limit?: number) => ipcRenderer.invoke(CHANNELS.AUDIT_GET_RECENT, limit),
     query: (params?: { startDate?: string; endDate?: string; limit?: number; offset?: number }) => ipcRenderer.invoke(CHANNELS.AUDIT_QUERY, params),
+  },
+  templates: {
+    list: () => ipcRenderer.invoke(CHANNELS.TEMPLATES_LIST),
+    getActive: () => ipcRenderer.invoke(CHANNELS.TEMPLATES_GET_ACTIVE),
+    save: (template: any) => ipcRenderer.invoke(CHANNELS.TEMPLATES_SAVE, template),
+    activate: (id: string) => ipcRenderer.invoke(CHANNELS.TEMPLATES_ACTIVATE, id),
+    delete: (id: string) => ipcRenderer.invoke(CHANNELS.TEMPLATES_DELETE, id),
   },
   app: {
     getInfo: () => ipcRenderer.invoke(CHANNELS.APP_GET_INFO),
