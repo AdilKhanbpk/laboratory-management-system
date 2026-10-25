@@ -28,6 +28,8 @@ import {
   Database,
 } from 'lucide-react';
 
+import { LegacyTestImporterCard } from './LegacyTestImporterCard';
+
 interface DeveloperPortalViewProps {
   onNavigate?: (tab: any) => void;
 }
@@ -329,7 +331,12 @@ export const DeveloperPortalView: React.FC<DeveloperPortalViewProps> = ({ onNavi
       </Card>
 
       {/* ============================================================== */}
-      {/* SECTION 2: CONTROLLED DATABASE RESTORATION ENGINE               */}
+      {/* SECTION 2: LEGACY TEST CATALOG 1-CLICK IMPORTER                 */}
+      {/* ============================================================== */}
+      <LegacyTestImporterCard onNavigate={onNavigate} />
+
+      {/* ============================================================== */}
+      {/* SECTION 3: CONTROLLED DATABASE RESTORATION ENGINE               */}
       {/* ============================================================== */}
       <Card className="p-6 bg-white border-slate-200 shadow-sm space-y-5">
         <div>

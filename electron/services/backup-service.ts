@@ -51,9 +51,10 @@ export class BackupService {
     const rawHour = now.getHours();
     const hour12 = rawHour % 12 || 12;
     const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
     const ampm = rawHour >= 12 ? 'pm' : 'am';
 
-    return `${prefix}_${month}-${day}-${year}&Time-${hour12}-${minutes}-${ampm}.db`;
+    return `${prefix}_${month}-${day}-${year}&Time-${hour12}-${minutes}-${seconds}-${ampm}.db`;
   }
 
   /**
@@ -234,6 +235,36 @@ export class BackupService {
     }
 
     return result.filePaths[0];
+  }
+
+  /**
+   * Purges older backup files in the target directory, retaining only the specified file.
+   */
+  public purgeOlderBackups(targetDirOverride?: string, keepFileName?: string): number {
+    const targetDir = targetDirOverride || this.defaultBackupDir;
+    if (!fs.existsSync(targetDir)) return 0;
+
+    let deletedCount = 0;
+    try {
+      const files = fs.readdirSync(targetDir);
+      for (const file of files) {
+        if (
+          (file.endsWith('.db') || file.endsWith('.bak')) &&
+          !file.startsWith('.') &&
+          file !== keepFileName
+        ) {
+          try {
+            fs.unlinkSync(path.join(targetDir, file));
+            deletedCount++;
+          } catch (err) {
+            console.error(`Failed to delete older backup ${file}:`, err);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to purge older backups:', err);
+    }
+    return deletedCount;
   }
 }
 

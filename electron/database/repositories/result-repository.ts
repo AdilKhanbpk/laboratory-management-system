@@ -71,19 +71,61 @@ export class ResultRepository {
 
     if (params.query && params.query.trim()) {
       const q = `%${params.query.trim()}%`;
-      conditions.push(`(v.visit_number LIKE ? OR p.full_name LIKE ? OR p.patient_mrn LIKE ? OR oi.test_code_snapshot LIKE ?)`);
+      conditions.push(`v.id IN (
+        SELECT DISTINCT v_sub.id
+        FROM visits v_sub
+        JOIN patients p_sub ON v_sub.patient_id = p_sub.id
+        JOIN order_items oi_sub ON oi_sub.visit_id = v_sub.id
+        WHERE v_sub.visit_number LIKE ? OR p_sub.full_name LIKE ? OR p_sub.patient_mrn LIKE ? OR oi_sub.test_code_snapshot LIKE ?
+      )`);
       sqlParams.push(q, q, q, q);
     }
 
     if (params.status && params.status !== 'all') {
       if (params.status === 'pending') {
-        conditions.push(`(oi.status IN ('pending', 'ordered') AND (res_summary.entered_count IS NULL OR res_summary.entered_count = 0))`);
+        conditions.push(`v.id IN (
+          SELECT DISTINCT v_sub.id
+          FROM visits v_sub
+          JOIN order_items oi_sub ON oi_sub.visit_id = v_sub.id
+          LEFT JOIN (
+            SELECT order_item_id, COUNT(*) as entered_count
+            FROM test_results GROUP BY order_item_id
+          ) res_summary_sub ON oi_sub.id = res_summary_sub.order_item_id
+          WHERE (oi_sub.status IN ('pending', 'ordered') AND (res_summary_sub.entered_count IS NULL OR res_summary_sub.entered_count = 0))
+        )`);
       } else if (params.status === 'draft') {
-        conditions.push(`(res_summary.min_status = 'draft' AND oi.status != 'completed')`);
+        conditions.push(`v.id IN (
+          SELECT DISTINCT v_sub.id
+          FROM visits v_sub
+          JOIN order_items oi_sub ON oi_sub.visit_id = v_sub.id
+          LEFT JOIN (
+            SELECT order_item_id, MIN(status) as min_status
+            FROM test_results GROUP BY order_item_id
+          ) res_summary_sub ON oi_sub.id = res_summary_sub.order_item_id
+          WHERE (res_summary_sub.min_status = 'draft' AND oi_sub.status != 'completed')
+        )`);
       } else if (params.status === 'reviewed') {
-        conditions.push(`(res_summary.min_status = 'reviewed' AND oi.status != 'completed')`);
+        conditions.push(`v.id IN (
+          SELECT DISTINCT v_sub.id
+          FROM visits v_sub
+          JOIN order_items oi_sub ON oi_sub.visit_id = v_sub.id
+          LEFT JOIN (
+            SELECT order_item_id, MIN(status) as min_status
+            FROM test_results GROUP BY order_item_id
+          ) res_summary_sub ON oi_sub.id = res_summary_sub.order_item_id
+          WHERE (res_summary_sub.min_status = 'reviewed' AND oi_sub.status != 'completed')
+        )`);
       } else if (params.status === 'completed' || params.status === 'finalized') {
-        conditions.push(`(oi.status = 'completed' OR res_summary.min_status = 'finalized')`);
+        conditions.push(`v.id IN (
+          SELECT DISTINCT v_sub.id
+          FROM visits v_sub
+          JOIN order_items oi_sub ON oi_sub.visit_id = v_sub.id
+          LEFT JOIN (
+            SELECT order_item_id, MIN(status) as min_status
+            FROM test_results GROUP BY order_item_id
+          ) res_summary_sub ON oi_sub.id = res_summary_sub.order_item_id
+          WHERE (oi_sub.status = 'completed' OR res_summary_sub.min_status = 'finalized')
+        )`);
       } else {
         conditions.push(`oi.status = ?`);
         sqlParams.push(params.status);
@@ -131,7 +173,7 @@ export class ResultRepository {
       ) res_summary ON oi.id = res_summary.order_item_id
       ${whereClause}
       ORDER BY v.id DESC, oi.id ASC
-      LIMIT 100
+      LIMIT 500
     `;
 
     const rows = db.prepare(sql).all(...sqlParams) as any[];

@@ -69,7 +69,7 @@ describe('Prompt 5: Database Backup & Destructive Restore Lifecycle', () => {
 
     expect(backup.success).toBe(true);
     expect(fs.existsSync(backup.filePath)).toBe(true);
-    expect(backup.fileName).toMatch(/^lms_backup_[A-Za-z]{3}-\d{2}-\d{4}&Time-\d{1,2}-\d{2}-(am|pm)\.db$/);
+    expect(backup.fileName).toMatch(/^lms_backup_[A-Za-z]{3}-\d{2}-\d{4}&Time-\d{1,2}-\d{2}-\d{2}-(am|pm)\.db$/);
     expect(backup.fileSize).toBeGreaterThan(0);
     expect(backup.checksum).toHaveLength(64); // SHA-256 hex string
 

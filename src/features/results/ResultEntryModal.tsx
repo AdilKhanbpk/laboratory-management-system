@@ -31,21 +31,35 @@ interface ParameterDetail {
   ranges: ParameterRangeRule[];
 }
 
+export interface VisitTestItem {
+  orderItemId: number;
+  testName: string;
+  testCode: string;
+  parametersEntered: number;
+  parametersTotal: number;
+  status?: string;
+}
+
 interface ResultEntryModalProps {
   orderItemId: number | null;
+  visitTests?: VisitTestItem[];
   isOpen: boolean;
   onClose: () => void;
   onSaved?: () => void;
   onFinalized?: (visitId: number) => void;
+  onSelectTest?: (orderItemId: number) => void;
 }
 
 export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
   orderItemId,
+  visitTests,
   isOpen,
   onClose,
   onSaved,
   onFinalized,
+  onSelectTest,
 }) => {
+  const [currentOrderItemId, setCurrentOrderItemId] = useState<number | null>(orderItemId);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isReviewing, setIsReviewing] = useState(false);
@@ -55,6 +69,11 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
   const [patient, setPatient] = useState<Patient | null>(null);
   const [parameters, setParameters] = useState<ParameterDetail[]>([]);
 
+  // Keep currentOrderItemId synchronized with prop
+  useEffect(() => {
+    setCurrentOrderItemId(orderItemId);
+  }, [orderItemId]);
+
   // Local form state: parameterId -> { value: string, notes: string }
   const [formValues, setFormValues] = useState<Record<number, { value: string; notes: string }>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -63,15 +82,16 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
   // Amendment modal state
   const [amendingResultId, setAmendingResultId] = useState<number | null>(null);
 
-  // Fetch order item results on open
-  const loadOrderDetails = async () => {
-    if (!orderItemId) return;
+  // Fetch order item results on open or when switching tests
+  const loadOrderDetails = async (idToFetch?: number) => {
+    const targetId = idToFetch ?? currentOrderItemId;
+    if (!targetId) return;
     setIsLoading(true);
     setErrorMessage(null);
     setSuccessMessage(null);
 
     try {
-      const res = await window.electronAPI.results.getForOrderItem(orderItemId);
+      const res = await window.electronAPI.results.getForOrderItem(targetId);
       if (res.success && res.data) {
         setOrderItem(res.data.orderItem);
         setPatient(res.data.patient);
@@ -96,9 +116,9 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen && orderItemId) {
-      loadOrderDetails();
-    } else {
+    if (isOpen && currentOrderItemId) {
+      loadOrderDetails(currentOrderItemId);
+    } else if (!isOpen) {
       setOrderItem(null);
       setPatient(null);
       setParameters([]);
@@ -106,7 +126,13 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
       setErrorMessage(null);
       setSuccessMessage(null);
     }
-  }, [isOpen, orderItemId]);
+  }, [isOpen, currentOrderItemId]);
+
+  const handleSwitchTest = (newId: number) => {
+    if (newId === currentOrderItemId) return;
+    setCurrentOrderItemId(newId);
+    onSelectTest?.(newId);
+  };
 
   const isOrderFinalized = orderItem?.status === 'completed';
 
@@ -153,7 +179,7 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
   };
 
   const handleSaveDraft = async () => {
-    if (!orderItemId) return;
+    if (!currentOrderItemId) return;
     setIsSaving(true);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -177,14 +203,14 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
       }
 
       const res = await window.electronAPI.results.saveDraft({
-        orderItemId,
+        orderItemId: currentOrderItemId,
         results: resultsToSave,
       });
 
       if (res.success) {
         setSuccessMessage('Draft results saved successfully.');
         onSaved?.();
-        await loadOrderDetails();
+        await loadOrderDetails(currentOrderItemId);
       } else {
         setErrorMessage(res.error || 'Failed to save draft results.');
       }
@@ -196,17 +222,17 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
   };
 
   const handleMarkReviewed = async () => {
-    if (!orderItemId) return;
+    if (!currentOrderItemId) return;
     setIsReviewing(true);
     setErrorMessage(null);
     setSuccessMessage(null);
 
     try {
-      const res = await window.electronAPI.results.markReviewed(orderItemId);
+      const res = await window.electronAPI.results.markReviewed(currentOrderItemId);
       if (res.success) {
         setSuccessMessage('All entered parameters marked as reviewed.');
         onSaved?.();
-        await loadOrderDetails();
+        await loadOrderDetails(currentOrderItemId);
       } else {
         setErrorMessage(res.error || 'Failed to mark results as reviewed.');
       }
@@ -296,7 +322,7 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
                 {orderItem?.test_name_snapshot || 'Specimen Result Entry'}
               </h2>
               <p className="text-xs text-slate-400">
-                Test Code: <span className="font-mono text-slate-300">{orderItem?.test_code_snapshot || '—'}</span> • Order Item #{orderItemId}
+                Test Code: <span className="font-mono text-slate-300">{orderItem?.test_code_snapshot || '—'}</span> • Order Item #{currentOrderItemId}
               </p>
             </div>
           </div>
@@ -308,6 +334,49 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Test Switcher Bar for multi-test visits */}
+        {visitTests && visitTests.length > 1 && (
+          <div className="px-6 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center gap-2 overflow-x-auto shrink-0">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider shrink-0 mr-1">
+              Tests In This Visit ({visitTests.length}):
+            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {visitTests.map((t) => {
+                const isSelected = t.orderItemId === currentOrderItemId;
+                const isComplete = t.parametersTotal > 0 && t.parametersEntered === t.parametersTotal;
+                return (
+                  <button
+                    key={t.orderItemId}
+                    type="button"
+                    onClick={() => handleSwitchTest(t.orderItemId)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border transition-all ${
+                      isSelected
+                        ? 'bg-white text-brand-700 border-brand-500 shadow-sm ring-1 ring-brand-500/30'
+                        : 'bg-slate-200/70 text-slate-700 border-slate-300 hover:bg-white hover:text-slate-900'
+                    }`}
+                  >
+                    <span>{t.testName}</span>
+                    <span className="font-mono text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                      {t.testCode}
+                    </span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                        isComplete
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : t.parametersEntered > 0
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {t.parametersEntered} / {t.parametersTotal}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Demographics Strip */}
         {patient && orderItem && (

@@ -76,6 +76,7 @@ export const IPC_CHANNELS = {
   BACKUP_SELECT_DESTINATION: 'backup:select-destination',
   BACKUP_SET_DEFAULT_PATH: 'backup:set-default-path',
   BACKUP_CREATE: 'backup:create',
+  BACKUP_PURGE_OLDER: 'backup:purge-older',
   BACKUP_LIST_LOCAL: 'backup:list-local',
   RESTORE_SELECT_FILE: 'restore:select-file',
   RESTORE_INSPECT_FILE: 'restore:inspect-file',
@@ -84,6 +85,10 @@ export const IPC_CHANNELS = {
   // Developer Portal
   DEV_VALIDATE_PASSWORD: 'dev:validate-password',
   DEV_GET_CURRENT_DYNAMIC_KEY: 'dev:get-current-dynamic-key',
+  DEV_DETECT_LEGACY_BACKUP: 'dev:detect-legacy-backup',
+  DEV_IMPORT_LEGACY_TESTS: 'dev:import-legacy-tests',
+  DEV_SELECT_LEGACY_FILE: 'dev:select-legacy-file',
+  DEV_CLEAR_ALL_TESTS: 'dev:clear-all-tests',
 
   // Audit
   AUDIT_GET_RECENT: 'audit:get-recent',

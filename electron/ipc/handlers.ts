@@ -1,7 +1,14 @@
-import { ipcMain, app, BrowserWindow } from 'electron';
+import { ipcMain, app, BrowserWindow, dialog } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { IPC_CHANNELS } from './channels';
+import {
+  detectLegacyTestCatalog,
+  importLegacyTestsToActiveDatabase,
+  clearAllCatalogTests,
+  LegacyTestDetectionResult,
+  LegacyTestImportStats,
+} from '../database/legacy-test-importer';
 import {
   InitialSetupSchema,
   LoginSchema,
@@ -26,6 +33,7 @@ import {
   AmendResultSchema,
   ExportPdfSchema,
   CreateBackupSchema,
+  PurgeOlderBackupsSchema,
   InspectBackupSchema,
   ExecuteRestoreSchema,
   IpcResponse,
@@ -63,6 +71,7 @@ import { RestoreService } from '../services/restore-service';
 import { MigrationRunner } from '../database/migrations';
 import { LogoService } from '../security/logo-service';
 import { KeyManager } from '../security/dpapi-key';
+import { wipeDatabaseAndSeedStandardCatalog } from '../database/standard-catalog-seeder';
 import { hashPasswordSync, verifyPassword } from '../security/hash';
 import {
   generateDynamicHourlyKey,
@@ -1205,6 +1214,23 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
     }
   });
 
+  // 45b. Backup: Purge Older Backups
+  ipcMain.handle(IPC_CHANNELS.BACKUP_PURGE_OLDER, async (_, rawInput: unknown): Promise<IpcResponse<{ deletedCount: number }>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = PurgeOlderBackupsSchema.safeParse(rawInput || {});
+      const hospital = ctx.hospitalRepo.getSettings();
+      const targetDir = parsed.success && parsed.data.destinationDir
+        ? parsed.data.destinationDir
+        : hospital?.default_backup_path || undefined;
+      const keepFileName = parsed.success ? parsed.data.keepFileName : undefined;
+      const deletedCount = ctx.backupService.purgeOlderBackups(targetDir, keepFileName);
+      return { success: true, data: { deletedCount } };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to purge older backups.' };
+    }
+  });
+
   // 46. Backup: List Local Backups
   ipcMain.handle(IPC_CHANNELS.BACKUP_LIST_LOCAL, async (_, customDir: unknown): Promise<IpcResponse<BackupMetadata[]>> => {
     try {
@@ -1251,6 +1277,87 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to generate dynamic authorization key.' };
+    }
+  });
+
+  // Developer: Detect Legacy Backup Database
+  ipcMain.handle(IPC_CHANNELS.DEV_DETECT_LEGACY_BACKUP, async (_, filePath?: unknown): Promise<IpcResponse<LegacyTestDetectionResult>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const customPath = typeof filePath === 'string' && filePath.trim() ? filePath.trim() : undefined;
+      const detected = detectLegacyTestCatalog(customPath);
+      return { success: true, data: detected };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to detect legacy test catalog.' };
+    }
+  });
+
+  // Developer: Import Legacy Tests with One Click ("Add Tests")
+  ipcMain.handle(IPC_CHANNELS.DEV_IMPORT_LEGACY_TESTS, async (_, filePath?: unknown): Promise<IpcResponse<LegacyTestImportStats>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const customPath = typeof filePath === 'string' && filePath.trim() ? filePath.trim() : undefined;
+      const stats = importLegacyTestsToActiveDatabase(ctx.dbManager, customPath);
+
+      // Audit log the test catalog import
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'IMPORT_LEGACY_TESTS',
+        entityType: 'LAB_TEST',
+        entityId: 'CATALOG',
+        details: {
+          totalTests: stats.totalTests,
+          parametersInserted: stats.parametersInserted,
+          sourceFile: path.basename(stats.filePath),
+        },
+      });
+
+      return { success: true, data: stats };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to import legacy tests.' };
+    }
+  });
+
+  // Developer: Select Legacy Backup File Dialog
+  ipcMain.handle(IPC_CHANNELS.DEV_SELECT_LEGACY_FILE, async (): Promise<IpcResponse<string | null>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const mainWindow = ctx.getMainWindow ? ctx.getMainWindow() : null;
+      const res = await dialog.showOpenDialog(mainWindow as any, {
+        title: 'Select Legacy Laboratory Backup File (.bak / .db)',
+        filters: [
+          { name: 'Legacy Backup Files', extensions: ['bak', 'db', 'sqlite'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+        properties: ['openFile'],
+      });
+      if (res.canceled || res.filePaths.length === 0) {
+        return { success: true, data: null };
+      }
+      return { success: true, data: res.filePaths[0] };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to open file dialog.' };
+    }
+  });
+
+  // Developer: Clear All Existing Tests
+  ipcMain.handle(IPC_CHANNELS.DEV_CLEAR_ALL_TESTS, async (): Promise<IpcResponse<{ deletedTests: number; deletedParams: number }>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const res = clearAllCatalogTests(ctx.dbManager);
+
+      // Audit log the test catalog wipe
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'CLEAR_ALL_TESTS',
+        entityType: 'LAB_TEST',
+        entityId: 'CATALOG',
+        details: res,
+      });
+
+      return { success: true, data: res };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to clear tests from database.' };
     }
   });
 

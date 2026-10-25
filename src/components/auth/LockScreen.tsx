@@ -1,15 +1,22 @@
 import React, { useState } from 'react';
-import { Button } from '../common/Button';
-import { Input } from '../common/Input';
-import { Alert } from '../common/Alert';
-import { Lock, LogOut, ShieldAlert } from 'lucide-react';
+import { Lock, AlertCircle, Loader2 } from 'lucide-react';
 import type { SafeUser } from '../../types';
+
+/*
+ * Same tokens as the rest of the app:
+ *   primary #0F766E / hover #115E59, overlay #111827, surface #FFFFFF,
+ *   text #1F2937, muted #64748B, border #E2E8F0 (inputs #CBD5E1), error #DC2626.
+ */
 
 interface LockScreenProps {
   user: SafeUser;
   onUnlock: () => void;
   onLogout: () => void;
 }
+
+const inputClass =
+  'block w-full h-10 px-3 rounded-md border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] ' +
+  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]';
 
 export const LockScreen: React.FC<LockScreenProps> = ({ user, onUnlock, onLogout }) => {
   const [password, setPassword] = useState('');
@@ -41,71 +48,101 @@ export const LockScreen: React.FC<LockScreenProps> = ({ user, onUnlock, onLogout
     }
   };
 
+  const initials = user.full_name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-6 select-text">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
-        <div className="bg-slate-800 text-white p-6 text-center">
-          <div className="w-14 h-14 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto mb-3 border border-amber-500/30">
-            <Lock className="w-7 h-7" />
+    // Opaque overlay: patient data behind a locked session must not show through.
+    <div className="fixed inset-0 z-50 bg-[#111827] flex items-center justify-center p-6 select-text">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lock-title"
+        className="w-full max-w-sm bg-white rounded-lg border border-[#E2E8F0] text-[#1F2937]"
+      >
+        <div className="px-6 pt-6 pb-5 border-b border-[#E2E8F0]">
+          <div className="w-9 h-9 rounded-md bg-[#F1F5F9] flex items-center justify-center">
+            <Lock className="w-4 h-4 text-[#1F2937]" />
           </div>
-          <h2 className="text-lg font-bold">Session Locked</h2>
-          <p className="text-xs text-slate-300 mt-1">
-            Workstation locked due to inactivity or operator request
+          <h2 id="lock-title" className="mt-4 text-xl font-semibold">
+            Workstation locked
+          </h2>
+          <p className="mt-1 text-[13px] text-[#64748B]">
+            Locked after inactivity or by the operator. Enter your password to continue.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm">
-              {user.full_name.charAt(0).toUpperCase()}
+          <div className="flex items-center gap-3">
+            <div
+              aria-hidden="true"
+              className="w-9 h-9 rounded-full bg-[#F1F5F9] text-[#1F2937] text-xs font-semibold flex items-center justify-center shrink-0"
+            >
+              {initials}
             </div>
-            <div className="overflow-hidden">
-              <h4 className="text-sm font-semibold text-slate-900 truncate">{user.full_name}</h4>
-              <p className="text-xs text-slate-500 truncate">@{user.username} • {user.role.toUpperCase()}</p>
+            <div className="min-w-0 leading-tight">
+              <p className="text-[13px] font-medium truncate">{user.full_name}</p>
+              <p className="text-xs text-[#64748B] truncate">
+                {user.username}, <span className="capitalize">{user.role}</span>
+              </p>
             </div>
           </div>
 
           {error && (
-            <Alert type="error" title="Unlock Failed">
-              {error}
-            </Alert>
+            <div
+              role="alert"
+              className="flex gap-3 rounded-lg border border-[#E2E8F0] border-l-4 border-l-[#DC2626] bg-white px-4 py-3"
+            >
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[#DC2626]" />
+              <div>
+                <p className="text-[13px] font-semibold">Could not unlock</p>
+                <p className="text-[13px] text-[#64748B] mt-0.5">{error}</p>
+              </div>
+            </div>
           )}
 
-          <Input
-            type="password"
-            label="Enter Password to Unlock"
-            placeholder="Account password"
-            autoFocus
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div>
+            <label htmlFor="unlock-password" className="block text-[13px] font-medium mb-1.5">
+              Password
+            </label>
+            <input
+              id="unlock-password"
+              type="password"
+              autoFocus
+              autoComplete="current-password"
+              className={inputClass}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
 
-          <div className="flex gap-3 pt-2">
-            <Button
+          <div className="flex gap-3 pt-1">
+            <button
               type="submit"
-              className="flex-1"
-              isLoading={isUnlocking}
+              disabled={isUnlocking}
+              className="flex-1 inline-flex items-center justify-center gap-2 h-10 rounded-md bg-[#0F766E] text-[13px] font-medium text-white hover:bg-[#115E59] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2 disabled:bg-[#94A3B8] disabled:cursor-not-allowed"
             >
-              Resume Session
-            </Button>
-            <Button
+              {isUnlocking && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isUnlocking ? 'Unlocking…' : 'Unlock'}
+            </button>
+            <button
               type="button"
-              variant="outline"
               onClick={onLogout}
-              className="text-slate-600 hover:text-red-600 hover:border-red-200"
+              className="inline-flex items-center justify-center h-10 px-4 rounded-md border border-[#CBD5E1] bg-white text-[13px] font-medium text-[#1F2937] hover:bg-[#F8FAFC] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
             >
-              <LogOut className="w-4 h-4 mr-1.5" />
-              Sign Out
-            </Button>
+              Sign out
+            </button>
           </div>
         </form>
 
-        <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-center gap-1.5 text-xs text-slate-500">
-          <ShieldAlert className="w-3.5 h-3.5 text-slate-400" />
-          All active records preserved in local encrypted memory
-        </div>
+        <p className="px-6 py-3 border-t border-[#E2E8F0] bg-[#F8FAFC] rounded-b-lg text-xs text-[#64748B]">
+          Open records are kept in encrypted local memory while locked.
+        </p>
       </div>
     </div>
   );
 };
-

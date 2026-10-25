@@ -94,6 +94,7 @@ const CHANNELS = {
   BACKUP_SELECT_DESTINATION: 'backup:select-destination',
   BACKUP_SET_DEFAULT_PATH: 'backup:set-default-path',
   BACKUP_CREATE: 'backup:create',
+  BACKUP_PURGE_OLDER: 'backup:purge-older',
   BACKUP_LIST_LOCAL: 'backup:list-local',
   RESTORE_SELECT_FILE: 'restore:select-file',
   RESTORE_INSPECT_FILE: 'restore:inspect-file',
@@ -102,6 +103,10 @@ const CHANNELS = {
   // Developer Portal
   DEV_VALIDATE_PASSWORD: 'dev:validate-password',
   DEV_GET_CURRENT_DYNAMIC_KEY: 'dev:get-current-dynamic-key',
+  DEV_DETECT_LEGACY_BACKUP: 'dev:detect-legacy-backup',
+  DEV_IMPORT_LEGACY_TESTS: 'dev:import-legacy-tests',
+  DEV_SELECT_LEGACY_FILE: 'dev:select-legacy-file',
+  DEV_CLEAR_ALL_TESTS: 'dev:clear-all-tests',
 
   // Audit
   AUDIT_GET_RECENT: 'audit:get-recent',
@@ -191,11 +196,16 @@ const api: ElectronAPI = {
     selectDestination: () => ipcRenderer.invoke(CHANNELS.BACKUP_SELECT_DESTINATION),
     setDefaultPath: (destinationPath: string) => ipcRenderer.invoke(CHANNELS.BACKUP_SET_DEFAULT_PATH, destinationPath),
     create: (input) => ipcRenderer.invoke(CHANNELS.BACKUP_CREATE, input),
+    purgeOlder: (input) => ipcRenderer.invoke(CHANNELS.BACKUP_PURGE_OLDER, input),
     listLocal: (directoryPath?: string) => ipcRenderer.invoke(CHANNELS.BACKUP_LIST_LOCAL, directoryPath),
   },
   developer: {
     validatePassword: (password: string) => ipcRenderer.invoke(CHANNELS.DEV_VALIDATE_PASSWORD, password),
     getCurrentDynamicKey: () => ipcRenderer.invoke(CHANNELS.DEV_GET_CURRENT_DYNAMIC_KEY),
+    detectLegacyBackup: (filePath?: string) => ipcRenderer.invoke(CHANNELS.DEV_DETECT_LEGACY_BACKUP, filePath),
+    importLegacyTests: (filePath?: string) => ipcRenderer.invoke(CHANNELS.DEV_IMPORT_LEGACY_TESTS, filePath),
+    selectLegacyFile: () => ipcRenderer.invoke(CHANNELS.DEV_SELECT_LEGACY_FILE),
+    clearAllTests: () => ipcRenderer.invoke(CHANNELS.DEV_CLEAR_ALL_TESTS),
   },
   restore: {
     selectFile: () => ipcRenderer.invoke(CHANNELS.RESTORE_SELECT_FILE),

@@ -15,6 +15,7 @@ import { DoctorStatsRepository } from './database/repositories/doctor-stats-repo
 import { ResultRepository } from './database/repositories/result-repository';
 import { PatientHistoryRepository } from './database/repositories/patient-history-repository';
 import { LogoService } from './security/logo-service';
+import { wipeDatabaseAndSeedStandardCatalog } from './database/standard-catalog-seeder';
 import { BackupService } from './services/backup-service';
 import { RestoreService } from './services/restore-service';
 import { registerIpcHandlers } from './ipc/handlers';
@@ -90,6 +91,18 @@ function initializeDatabase(): {
 
   const migrationRunner = new MigrationRunner(manager, migrationsDir);
   migrationRunner.runPendingMigrations();
+
+  // One-time fresh software initialization: wipe all demo data, user, and load standard catalog
+  const cleanSlateMarker = path.join(userDataPath, '.fresh_v1_marker');
+  if (!fs.existsSync(cleanSlateMarker)) {
+    try {
+      const rawDb = manager.getDatabase();
+      wipeDatabaseAndSeedStandardCatalog(rawDb);
+      fs.writeFileSync(cleanSlateMarker, 'fresh_initialized');
+    } catch (err) {
+      console.error('[LMS] Clean slate initialization error:', err);
+    }
+  }
 
   const userRepo = new UserRepository(manager);
   const hospitalRepo = new HospitalRepository(manager);

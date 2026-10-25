@@ -264,20 +264,30 @@ export class CatalogRepository {
         id
       );
 
-      // If new parameter list is supplied, update parameter definitions
+      // If new parameter list is supplied, update parameter definitions safely without breaking FK constraints
       if (parameters) {
-        // Remove existing ranges and parameters for this test
-        const existingParams = tx.prepare('SELECT id FROM test_parameters WHERE test_id = ?').all(id) as Array<{ id: number }>;
-        for (const ep of existingParams) {
-          tx.prepare('DELETE FROM parameter_reference_ranges WHERE parameter_id = ?').run(ep.id);
-        }
-        tx.prepare('DELETE FROM test_parameters WHERE test_id = ?').run(id);
+        const existingParams = tx.prepare('SELECT id, parameter_name FROM test_parameters WHERE test_id = ?').all(id) as Array<{ id: number; parameter_name: string }>;
+        const existingMap = new Map(existingParams.map((p) => [p.parameter_name.toLowerCase().trim(), p.id]));
+        const keptParamIds = new Set<number>();
+
+        const updateParamStmt = tx.prepare(`
+          UPDATE test_parameters SET
+            parameter_name = ?,
+            display_order = ?,
+            unit = ?,
+            parameter_type = ?,
+            notes = ?,
+            is_active = 1
+          WHERE id = ?
+        `);
 
         const insertParamStmt = tx.prepare(`
           INSERT INTO test_parameters (
             test_id, parameter_name, display_order, unit, parameter_type, notes, is_active
           ) VALUES (?, ?, ?, ?, ?, ?, 1)
         `);
+
+        const deleteRangesStmt = tx.prepare('DELETE FROM parameter_reference_ranges WHERE parameter_id = ?');
 
         const insertRangeStmt = tx.prepare(`
           INSERT INTO parameter_reference_ranges (
@@ -286,16 +296,34 @@ export class CatalogRepository {
         `);
 
         parameters.forEach((param, idx) => {
-          const paramResult = insertParamStmt.run(
-            id,
-            param.parameter_name.trim(),
-            param.display_order ?? idx + 1,
-            param.unit?.trim() || null,
-            param.parameter_type || 'numeric',
-            param.notes?.trim() || null
-          );
+          const trimmedName = param.parameter_name.trim();
+          const existingId = existingMap.get(trimmedName.toLowerCase());
+          let paramId: number;
 
-          const paramId = Number(paramResult.lastInsertRowid);
+          if (existingId) {
+            updateParamStmt.run(
+              trimmedName,
+              param.display_order ?? idx + 1,
+              param.unit?.trim() || null,
+              param.parameter_type || 'numeric',
+              param.notes?.trim() || null,
+              existingId
+            );
+            paramId = existingId;
+            keptParamIds.add(existingId);
+            deleteRangesStmt.run(paramId);
+          } else {
+            const paramResult = insertParamStmt.run(
+              id,
+              trimmedName,
+              param.display_order ?? idx + 1,
+              param.unit?.trim() || null,
+              param.parameter_type || 'numeric',
+              param.notes?.trim() || null
+            );
+            paramId = Number(paramResult.lastInsertRowid);
+            keptParamIds.add(paramId);
+          }
 
           if (param.ranges && param.ranges.length > 0) {
             for (const range of param.ranges) {
@@ -313,6 +341,21 @@ export class CatalogRepository {
             }
           }
         });
+
+        // For any previous parameters removed in the edit form:
+        for (const ep of existingParams) {
+          if (!keptParamIds.has(ep.id)) {
+            // Check if this parameter is referenced in test_results
+            const inUse = tx.prepare('SELECT 1 FROM test_results WHERE parameter_id = ? LIMIT 1').get(ep.id);
+            if (inUse) {
+              // Soft delete to protect clinical audit history and avoid FK violation
+              tx.prepare('UPDATE test_parameters SET is_active = 0 WHERE id = ?').run(ep.id);
+            } else {
+              deleteRangesStmt.run(ep.id);
+              tx.prepare('DELETE FROM test_parameters WHERE id = ?').run(ep.id);
+            }
+          }
+        }
       }
 
       return this.getTestById(id, true)!;

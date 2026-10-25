@@ -1,19 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Doctor } from '../../types';
-import { Card } from '../../components/common/Card';
-import { Button } from '../../components/common/Button';
-import { Badge } from '../../components/common/Badge';
 import { DoctorFormModal } from './DoctorFormModal';
-import {
-  Stethoscope,
-  UserPlus,
-  Search,
-  Filter,
-  Edit2,
-  PowerOff,
-  CheckCircle2,
-  RefreshCw,
-} from 'lucide-react';
+import { Plus, Search, Pencil, PowerOff, RotateCcw, RefreshCw } from 'lucide-react';
+
+/*
+ * Same tokens as the rest of the app:
+ *   primary #0F766E / hover #115E59, surface #FFFFFF, toolbar and table header #F8FAFC,
+ *   text #1F2937, muted #64748B, border #E2E8F0 (inputs #CBD5E1), success #15803D.
+ */
+
+const inputClass =
+  'block w-full h-9 px-3 rounded-md border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] ' +
+  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]';
+
+const primaryBtn =
+  'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md bg-[#0F766E] text-[13px] font-medium text-white ' +
+  'hover:bg-[#115E59] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2';
+
+const secondaryBtn =
+  'inline-flex items-center justify-center gap-2 h-9 px-3 rounded-md border border-[#CBD5E1] bg-white text-[13px] font-medium text-[#1F2937] ' +
+  'hover:bg-[#F8FAFC] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] disabled:opacity-50 disabled:cursor-not-allowed';
+
+const iconBtn =
+  'w-8 h-8 inline-flex items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9] ' +
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]';
+
+const th = 'px-4 py-2.5 text-xs font-medium text-[#64748B] whitespace-nowrap';
+const td = 'px-4 py-3 text-[13px] align-middle whitespace-nowrap';
 
 export const DoctorListView: React.FC = () => {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -53,6 +66,11 @@ export const DoctorListView: React.FC = () => {
     fetchDoctors();
   }, [fetchDoctors]);
 
+  const handleOpenNew = () => {
+    setDoctorToEdit(null);
+    setIsFormOpen(true);
+  };
+
   const handleToggleActive = async (doctor: Doctor) => {
     const willDeactivate = doctor.is_active === 1;
     const confirmMessage = willDeactivate
@@ -74,165 +92,141 @@ export const DoctorListView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 pb-12 text-[#1F2937]">
+      {/* Page heading */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Referring Doctors Directory</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Maintain affiliated physicians, hospitals, and consultation specialists.
+          <h1 className="text-xl font-semibold">Referring doctors</h1>
+          <p className="mt-1 text-[13px] text-[#64748B]">
+            Physicians and clinics that refer patients to this laboratory.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={fetchDoctors} isLoading={isLoading}>
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={fetchDoctors} disabled={isLoading} className={secondaryBtn}>
+            <RefreshCw className={`w-4 h-4 text-[#64748B] ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setDoctorToEdit(null);
-              setIsFormOpen(true);
-            }}
-          >
-            <UserPlus className="w-4 h-4 mr-1.5" />
-            Add New Doctor
-          </Button>
+          </button>
+          <button type="button" onClick={handleOpenNew} className={primaryBtn}>
+            <Plus className="w-4 h-4" />
+            New doctor
+          </button>
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <Card className="p-4">
-        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-          <div className="relative w-full sm:w-96">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+      {/* Filters and table share one panel */}
+      <section className="bg-white border border-[#E2E8F0] rounded-lg overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 px-4 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+          <div className="relative md:col-span-8">
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#94A3B8]" aria-hidden="true" />
             <input
               type="text"
-              placeholder="Search by doctor name, clinic, or specialization..."
+              aria-label="Search doctors"
+              placeholder="Search by name, clinic or specialization"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-500"
+              className={`${inputClass} pl-9`}
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-xs text-slate-600">Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400"
-            >
-              <option value="active">Active Only</option>
-              <option value="all">All Doctors</option>
-              <option value="inactive">Inactive Only</option>
-            </select>
-          </div>
+          <select
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+            className={`${inputClass} md:col-span-4`}
+          >
+            <option value="active">Active doctors</option>
+            <option value="all">All doctors</option>
+            <option value="inactive">Inactive doctors</option>
+          </select>
         </div>
-      </Card>
 
-      {/* Table Card */}
-      <Card>
         {doctors.length === 0 ? (
-          <div className="text-center py-16 px-4">
-            <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
-              <Stethoscope className="w-7 h-7" />
-            </div>
-            <h3 className="text-sm font-bold text-slate-800 mb-1">
-              {searchQuery ? 'No matching doctors found' : 'No doctors in directory'}
-            </h3>
-            <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5 leading-relaxed">
+          <div className="px-4 py-14 text-center">
+            <p className="text-[13px] font-medium">
+              {searchQuery ? 'No doctors match this search' : 'No doctors added yet'}
+            </p>
+            <p className="mt-1 text-xs text-[#64748B]">
               {searchQuery
-                ? 'Try a different search keyword or switch the status filter to All.'
-                : 'Add referring physicians so they can be selected when booking patient visits.'}
+                ? 'Try a different keyword, or change the status filter to All doctors.'
+                : 'Add referring doctors so they can be chosen when you create a visit.'}
             </p>
             {!searchQuery && (
-              <Button
-                size="sm"
-                onClick={() => {
-                  setDoctorToEdit(null);
-                  setIsFormOpen(true);
-                }}
-              >
-                <UserPlus className="w-4 h-4 mr-1.5" />
-                Add First Doctor
-              </Button>
+              <button type="button" onClick={handleOpenNew} className={`${primaryBtn} mt-4`}>
+                <Plus className="w-4 h-4" />
+                New doctor
+              </button>
             )}
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider bg-slate-50/50">
-                  <th className="py-3 px-4">Doctor Name</th>
-                  <th className="py-3 px-4">Specialization</th>
-                  <th className="py-3 px-4">Phone Number</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+            <table className="w-full text-left">
+              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                <tr>
+                  <th scope="col" className={th}>Doctor</th>
+                  <th scope="col" className={th}>Specialization</th>
+                  <th scope="col" className={th}>Phone</th>
+                  <th scope="col" className={th}>Status</th>
+                  <th scope="col" className={`${th} text-right`}>Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {doctors.map((d) => (
-                  <tr
-                    key={d.id}
-                    className={`hover:bg-slate-50/80 transition-colors ${
-                      d.is_active === 0 ? 'opacity-60 bg-slate-50/40' : ''
-                    }`}
-                  >
-                    <td className="py-3 px-4 font-semibold text-slate-900 whitespace-nowrap">
-                      {d.full_name}
-                    </td>
-                    <td className="py-3 px-4 text-slate-700 whitespace-nowrap">
-                      {d.specialization || 'General / Unspecified'}
-                    </td>
-                    <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
-                      {d.phone_number || '—'}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      {d.is_active === 1 ? (
-                        <Badge variant="success">Active</Badge>
-                      ) : (
-                        <Badge variant="default" className="text-slate-400 bg-slate-100">
-                          Inactive
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => {
-                            setDoctorToEdit(d);
-                            setIsFormOpen(true);
-                          }}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-                          title="Edit Details"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleToggleActive(d)}
-                          className={`p-1.5 rounded-lg transition-colors ${
-                            d.is_active === 1
-                              ? 'text-slate-400 hover:text-red-600 hover:bg-red-50'
-                              : 'text-emerald-600 hover:bg-emerald-50'
-                          }`}
-                          title={d.is_active === 1 ? 'Deactivate Doctor' : 'Reactivate Doctor'}
-                        >
-                          {d.is_active === 1 ? (
-                            <PowerOff className="w-4 h-4" />
-                          ) : (
-                            <CheckCircle2 className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+              <tbody>
+                {doctors.map((d) => {
+                  const isActive = d.is_active === 1;
+                  return (
+                    <tr key={d.id} className="border-b border-[#E2E8F0] last:border-b-0 hover:bg-[#F8FAFC]">
+                      <td className={`${td} font-medium ${isActive ? '' : 'text-[#64748B]'}`}>{d.full_name}</td>
+                      <td className={`${td} ${isActive ? '' : 'text-[#64748B]'}`}>
+                        {d.specialization || <span className="text-[#64748B]">General</span>}
+                      </td>
+                      <td className={`${td} tabular-nums text-[#64748B]`}>{d.phone_number || '–'}</td>
+                      <td className={td}>
+                        <span className="inline-flex items-center gap-2">
+                          <span
+                            className={`w-2 h-2 rounded-full ${isActive ? 'bg-[#15803D]' : 'bg-[#94A3B8]'}`}
+                            aria-hidden="true"
+                          />
+                          {isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className={td}>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDoctorToEdit(d);
+                              setIsFormOpen(true);
+                            }}
+                            title="Edit details"
+                            aria-label={`Edit ${d.full_name}`}
+                            className={`${iconBtn} hover:text-[#1F2937]`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleActive(d)}
+                            title={isActive ? 'Deactivate doctor' : 'Reactivate doctor'}
+                            aria-label={`${isActive ? 'Deactivate' : 'Reactivate'} ${d.full_name}`}
+                            className={`${iconBtn} ${isActive ? 'hover:text-[#DC2626]' : 'hover:text-[#0F766E]'}`}
+                          >
+                            {isActive ? <PowerOff className="w-4 h-4" /> : <RotateCcw className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
-      </Card>
+
+        {doctors.length > 0 && (
+          <div className="px-4 py-3 border-t border-[#E2E8F0] bg-[#F8FAFC] text-[13px] text-[#64748B] tabular-nums">
+            {doctors.length} {doctors.length === 1 ? 'doctor' : 'doctors'}
+          </div>
+        )}
+      </section>
 
       <DoctorFormModal
         isOpen={isFormOpen}
@@ -243,4 +237,3 @@ export const DoctorListView: React.FC = () => {
     </div>
   );
 };
-

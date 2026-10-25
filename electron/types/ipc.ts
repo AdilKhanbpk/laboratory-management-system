@@ -508,6 +508,12 @@ export const CreateBackupSchema = z.object({
 });
 export type CreateBackupInput = z.infer<typeof CreateBackupSchema>;
 
+export const PurgeOlderBackupsSchema = z.object({
+  destinationDir: z.string().optional(),
+  keepFileName: z.string().optional(),
+});
+export type PurgeOlderBackupsInput = z.infer<typeof PurgeOlderBackupsSchema>;
+
 export const DevValidatePasswordSchema = z.object({
   password: z.string().min(1),
 });
@@ -517,6 +523,26 @@ export interface DevCurrentDynamicKeyResult {
   key: string;
   minutesRemaining: number;
   currentHourStr: string;
+}
+
+export interface LegacyTestDetectionResult {
+  detected: boolean;
+  filePath: string | null;
+  fileName: string | null;
+  fileSize: number;
+  testsCount: number;
+  parametersCount: number;
+  departmentsCount: number;
+  error?: string;
+}
+
+export interface LegacyTestImportStats {
+  filePath: string;
+  testsInserted: number;
+  testsUpdated: number;
+  totalTests: number;
+  parametersInserted: number;
+  departmentsFound: number;
 }
 
 export const InspectBackupSchema = z.object({
@@ -680,11 +706,16 @@ export interface ElectronAPI {
     selectDestination: () => Promise<IpcResponse<string | null>>;
     setDefaultPath: (destinationPath: string) => Promise<IpcResponse<boolean>>;
     create: (input?: CreateBackupInput) => Promise<IpcResponse<BackupResult>>;
+    purgeOlder: (input?: PurgeOlderBackupsInput) => Promise<IpcResponse<{ deletedCount: number }>>;
     listLocal: (directoryPath?: string) => Promise<IpcResponse<BackupMetadata[]>>;
   };
   developer: {
     validatePassword: (password: string) => Promise<IpcResponse<boolean>>;
     getCurrentDynamicKey: () => Promise<IpcResponse<DevCurrentDynamicKeyResult>>;
+    detectLegacyBackup: (filePath?: string) => Promise<IpcResponse<LegacyTestDetectionResult>>;
+    importLegacyTests: (filePath?: string) => Promise<IpcResponse<LegacyTestImportStats>>;
+    selectLegacyFile: () => Promise<IpcResponse<string | null>>;
+    clearAllTests: () => Promise<IpcResponse<{ deletedTests: number; deletedParams: number }>>;
   };
   restore: {
     selectFile: () => Promise<IpcResponse<string | null>>;

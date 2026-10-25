@@ -2,21 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useForm, useFieldArray, Control, UseFormRegister, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CreateTestSchema, CreateTestInput, LabTest } from '../../types';
-import { Button } from '../../components/common/Button';
-import { Input } from '../../components/common/Input';
-import { Alert } from '../../components/common/Alert';
 import { parseCurrencyToPaisa } from '../../lib/utils';
-import {
-  FlaskConical,
-  Plus,
-  Trash2,
-  X,
-  Layers,
-  Sliders,
-  TestTube2,
-  AlertTriangle,
-  Info,
-} from 'lucide-react';
+import { Plus, Trash2, X, AlertCircle, Loader2 } from 'lucide-react';
+
+/*
+ * Same tokens as the rest of the app:
+ *   primary #0F766E / hover #115E59, surface #FFFFFF, subtle surface #F8FAFC,
+ *   text #1F2937, muted #64748B, border #E2E8F0 (inputs #CBD5E1),
+ *   warning #D97706 (critical limits only), error #DC2626.
+ */
 
 interface TestFormModalProps {
   isOpen: boolean;
@@ -37,157 +31,127 @@ const DEFAULT_CATEGORIES = [
   'General',
 ];
 
-const SAMPLE_TYPE_PRESETS = [
-  'Serum',
-  'Whole Blood (EDTA)',
-  'Plasma (Fluoride)',
-  'Plasma (Citrate)',
-  'Plasma (Heparin)',
-  'Urine (Random)',
-  'Urine (24-Hour)',
-  'Stool',
-  'Sputum',
-  'CSF / Body Fluid',
-  'Swab (Throat/Nasal)',
-  'Other',
-];
+const inputClass =
+  'block w-full h-9 px-3 rounded-md border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] ' +
+  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]';
 
-const CONTAINER_PRESETS = [
-  'Yellow Top (SST / Gel Activator)',
-  'Purple Top (K2/K3 EDTA)',
-  'Red Top (Plain / Clot Activator)',
-  'Grey Top (Sodium Fluoride)',
-  'Blue Top (Sodium Citrate 3.2%)',
-  'Green Top (Lithium Heparin)',
-  'Sterile Urine Container',
-  'Stool Container',
-  'Swab Transport Tube',
-  'Other Container',
-];
+const criticalInputClass =
+  'block w-full h-9 px-3 rounded-md border border-[#D97706]/50 bg-white text-[13px] text-[#1F2937] ' +
+  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#D97706] focus:ring-1 focus:ring-[#D97706]';
 
-const PREPARATION_PRESETS = [
-  'Random / No Fasting Required',
-  '10 - 12 Hours Overnight Fasting',
-  '8 Hours Fasting',
-  'First Morning Midstream Urine',
-  '2 Hours Post-Prandial (After Meal)',
-  'Discontinue Antibiotics Prior to Sample',
-  'Other / Clinical Discretion',
-];
+const primaryBtn =
+  'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md bg-[#0F766E] text-[13px] font-medium text-white ' +
+  'hover:bg-[#115E59] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2 ' +
+  'disabled:bg-[#94A3B8] disabled:cursor-not-allowed';
 
-const TAT_PRESETS = [
-  '2 Hours (Stat / Urgent)',
-  'Same Day (4 - 6 Hours)',
-  'Same Day (Evening)',
-  '24 Hours (Next Day)',
-  '48 Hours',
-  '3 - 5 Days',
-];
+const secondaryBtn =
+  'inline-flex items-center justify-center gap-2 h-9 px-3 rounded-md border border-[#CBD5E1] bg-white text-[13px] font-medium text-[#1F2937] ' +
+  'hover:bg-[#F8FAFC] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]';
 
-const METHOD_PRESETS = [
-  'Automated Analyzer',
-  'Spectrophotometry / Photometric',
-  'Automated Cell Counter (Impedance/Flow)',
-  'Chemiluminescence (CLIA / ECLIA)',
-  'ELISA / Microplate',
-  'Microscopy & Staining',
-  'Immunochromatography (Rapid Card)',
-  'Turbidimetry',
-  'Manual / Wet Chemistry',
-];
+const linkBtn =
+  'inline-flex items-center gap-1 text-[13px] font-medium text-[#0F766E] hover:text-[#115E59] hover:underline ' +
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded';
+
+const emptyRange = () => ({
+  gender: 'all' as const,
+  min_age_days: 0,
+  max_age_days: 47450,
+  normal_low: null,
+  normal_high: null,
+  panic_low: null,
+  panic_high: null,
+  display_text: '',
+});
+
+const Label: React.FC<{ htmlFor: string; required?: boolean; optional?: boolean; children: React.ReactNode }> = ({
+  htmlFor,
+  required,
+  optional,
+  children,
+}) => (
+  <label htmlFor={htmlFor} className="block text-[13px] font-medium text-[#1F2937] mb-1.5">
+    {children}
+    {required && <span className="text-[#DC2626] ml-0.5">*</span>}
+    {optional && <span className="text-[#64748B] font-normal ml-1">(optional)</span>}
+  </label>
+);
 
 /**
- * Sub-component to manage multiple reference ranges per parameter.
- * Solves Issue 1 (Multiple ranges: Male, Female, Age-specific),
- * Issue 2 (No hardcoded 70-100 default), and Issue 3 (Result type: numeric vs text/qualitative).
+ * Manages multiple reference ranges per parameter:
+ * gender-specific ranges, no hardcoded default range, and numeric vs text results.
  */
 interface ParameterRangesEditorProps {
   control: Control<CreateTestInput>;
   paramIndex: number;
   register: UseFormRegister<CreateTestInput>;
-  errors: any;
+  errors?: any;
 }
 
-const ParameterRangesEditor: React.FC<ParameterRangesEditorProps> = ({
-  control,
-  paramIndex,
-  register,
-}) => {
+const ParameterRangesEditor: React.FC<ParameterRangesEditorProps> = ({ control, paramIndex, register }) => {
   const { fields, append, remove } = useFieldArray({
     control,
     name: `parameters.${paramIndex}.ranges` as const,
   });
 
-  const paramType = useWatch({
-    control,
-    name: `parameters.${paramIndex}.parameter_type` as const,
-  }) || 'numeric';
+  const paramType =
+    useWatch({
+      control,
+      name: `parameters.${paramIndex}.parameter_type` as const,
+    }) || 'numeric';
 
-  const unit = useWatch({
-    control,
-    name: `parameters.${paramIndex}.unit` as const,
-  }) || '';
+  const unit =
+    useWatch({
+      control,
+      name: `parameters.${paramIndex}.unit` as const,
+    }) || '';
 
   const handleAddRange = () => {
-    append({
-      gender: 'all',
-      min_age_days: 0,
-      max_age_days: 47450,
-      normal_low: null,
-      normal_high: null,
-      panic_low: null,
-      panic_high: null,
-      display_text: '',
-    });
+    append(emptyRange());
   };
 
+  const id = (rIdx: number, name: string) => `p${paramIndex}-r${rIdx}-${name}`;
+
   return (
-    <div className="space-y-3 pt-2">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-          <Info className="w-3.5 h-3.5 text-brand-600" />
-          Clinical Reference Ranges & Critical (Panic) Limits ({fields.length})
-        </label>
-        <button
-          type="button"
-          onClick={handleAddRange}
-          className="text-[11px] text-brand-600 hover:text-brand-700 font-semibold flex items-center gap-1 hover:underline"
-        >
-          <Plus className="w-3 h-3" />
-          Add Another Range (e.g. Male / Female)
-        </button>
+        <h4 className="text-[13px] font-semibold">
+          Reference ranges <span className="font-normal text-[#64748B] tabular-nums">({fields.length})</span>
+        </h4>
+        {fields.length > 0 && (
+          <button type="button" onClick={handleAddRange} className={linkBtn}>
+            <Plus className="w-3.5 h-3.5" />
+            Add range
+          </button>
+        )}
       </div>
 
       {fields.length === 0 ? (
-        <div className="p-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-center">
-          <p className="text-xs text-slate-500 mb-2">No reference range configured for this parameter.</p>
-          <Button type="button" size="sm" variant="outline" onClick={handleAddRange} className="text-xs">
-            <Plus className="w-3 h-3 mr-1" />
-            Add Reference Range
-          </Button>
+        <div className="rounded-md border border-dashed border-[#CBD5E1] px-4 py-5 text-center">
+          <p className="text-[13px] text-[#64748B]">No reference range set for this parameter.</p>
+          <button type="button" onClick={handleAddRange} className={`${secondaryBtn} mt-3`}>
+            <Plus className="w-4 h-4" />
+            Add reference range
+          </button>
         </div>
       ) : (
         <div className="space-y-3">
           {fields.map((rangeField, rIdx) => (
-            <div
-              key={rangeField.id}
-              className="p-3 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2.5 relative text-xs"
-            >
-              <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-800 text-xs">
-                    Range #{rIdx + 1}
-                  </span>
-                  {/* Gender Selector */}
-                  <div className="flex items-center gap-1">
-                    <label className="text-[11px] text-slate-500 font-medium">Applies to:</label>
+            <div key={rangeField.id} className="rounded-md border border-[#E2E8F0] bg-[#F8FAFC] p-4 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-[13px] font-medium">Range {rIdx + 1}</span>
+                  <div className="flex items-center gap-2">
+                    <label htmlFor={id(rIdx, 'gender')} className="text-[13px] text-[#64748B]">
+                      Applies to
+                    </label>
                     <select
+                      id={id(rIdx, 'gender')}
                       {...register(`parameters.${paramIndex}.ranges.${rIdx}.gender` as const)}
-                      className="px-2 py-0.5 rounded border border-slate-300 bg-white text-xs font-semibold text-slate-800"
+                      className={`${inputClass} !h-8 !w-auto`}
                     >
-                      <option value="all">All Genders</option>
-                      <option value="male">Male Only</option>
-                      <option value="female">Female Only</option>
+                      <option value="all">All genders</option>
+                      <option value="male">Male only</option>
+                      <option value="female">Female only</option>
                     </select>
                   </div>
                 </div>
@@ -196,110 +160,103 @@ const ParameterRangesEditor: React.FC<ParameterRangesEditorProps> = ({
                   <button
                     type="button"
                     onClick={() => remove(rIdx)}
-                    className="text-slate-400 hover:text-red-600 transition-colors p-1"
                     title="Remove this range"
+                    aria-label={`Remove range ${rIdx + 1}`}
+                    className="w-8 h-8 inline-flex items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#DC2626] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 )}
               </div>
 
               {paramType === 'numeric' ? (
-                /* Numeric / Quantitative Configuration */
-                <div className="space-y-2.5">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
-                        Normal Low {unit ? `(${unit})` : ''}
-                      </label>
+                      <Label htmlFor={id(rIdx, 'nl')}>Normal low{unit ? ` (${unit})` : ''}</Label>
                       <input
+                        id={id(rIdx, 'nl')}
                         type="number"
                         step="any"
-                        placeholder="e.g. 13.5"
+                        placeholder="13.5"
                         {...register(`parameters.${paramIndex}.ranges.${rIdx}.normal_low` as const, {
                           valueAsNumber: true,
                         })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        className={`${inputClass} tabular-nums`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
-                        Normal High {unit ? `(${unit})` : ''}
-                      </label>
+                      <Label htmlFor={id(rIdx, 'nh')}>Normal high{unit ? ` (${unit})` : ''}</Label>
                       <input
+                        id={id(rIdx, 'nh')}
                         type="number"
                         step="any"
-                        placeholder="e.g. 17.5"
+                        placeholder="17.5"
                         {...register(`parameters.${paramIndex}.ranges.${rIdx}.normal_high` as const, {
                           valueAsNumber: true,
                         })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        className={`${inputClass} tabular-nums`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-semibold text-amber-700 mb-0.5 flex items-center gap-0.5">
-                        <AlertTriangle className="w-3 h-3 text-amber-500" />
-                        Panic Low (Critical)
-                      </label>
+                      <Label htmlFor={id(rIdx, 'pl')}>Critical low</Label>
                       <input
+                        id={id(rIdx, 'pl')}
                         type="number"
                         step="any"
-                        placeholder="e.g. 7.0"
+                        placeholder="7.0"
                         {...register(`parameters.${paramIndex}.ranges.${rIdx}.panic_low` as const, {
                           valueAsNumber: true,
                         })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50/40 font-mono text-xs text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        className={`${criticalInputClass} tabular-nums`}
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-semibold text-amber-700 mb-0.5 flex items-center gap-0.5">
-                        <AlertTriangle className="w-3 h-3 text-amber-500" />
-                        Panic High (Critical)
-                      </label>
+                      <Label htmlFor={id(rIdx, 'ph')}>Critical high</Label>
                       <input
+                        id={id(rIdx, 'ph')}
                         type="number"
                         step="any"
-                        placeholder="e.g. 20.0"
+                        placeholder="20.0"
                         {...register(`parameters.${paramIndex}.ranges.${rIdx}.panic_high` as const, {
                           valueAsNumber: true,
                         })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50/40 font-mono text-xs text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        className={`${criticalInputClass} tabular-nums`}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">
-                      Display Reference Text Printed on Patient Reports <span className="text-slate-400 font-normal">(Auto-generated if left blank)</span>
-                    </label>
+                    <Label htmlFor={id(rIdx, 'text')} optional>
+                      Reference text on the report
+                    </Label>
                     <input
+                      id={id(rIdx, 'text')}
                       type="text"
-                      placeholder="e.g. 13.5 - 17.5 g/dL (or leave blank for automatic format)"
+                      placeholder="Leave blank to generate it from the limits, for example 13.5 - 17.5 g/dL"
                       {...register(`parameters.${paramIndex}.ranges.${rIdx}.display_text` as const)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      className={inputClass}
                     />
                   </div>
                 </div>
               ) : (
-                /* Qualitative / Text / Options Configuration */
-                <div className="space-y-2">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-700 mb-0.5">
-                      Expected Normal / Reference Clinical Text <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Negative, Non-Reactive, Clear, Normal"
-                      {...register(`parameters.${paramIndex}.ranges.${rIdx}.display_text` as const)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-500 font-medium"
-                    />
-                    <p className="text-[10px] text-slate-500 mt-0.5">
-                      This expected normal value will be printed in the Reference Interval column of the laboratory report.
-                    </p>
-                  </div>
+                <div>
+                  <Label htmlFor={id(rIdx, 'text')} required>
+                    Expected normal result
+                  </Label>
+                  <input
+                    id={id(rIdx, 'text')}
+                    type="text"
+                    placeholder="Negative, Non-reactive, Clear, Normal"
+                    {...register(`parameters.${paramIndex}.ranges.${rIdx}.display_text` as const)}
+                    className={inputClass}
+                  />
+                  <p className="mt-1.5 text-xs text-[#64748B]">
+                    Printed in the reference interval column of the report.
+                  </p>
                 </div>
               )}
             </div>
@@ -347,18 +304,7 @@ export const TestFormModal: React.FC<TestFormModalProps> = ({
           unit: '',
           parameter_type: 'numeric',
           notes: '',
-          ranges: [
-            {
-              gender: 'all',
-              min_age_days: 0,
-              max_age_days: 47450,
-              normal_low: null,
-              normal_high: null,
-              panic_low: null,
-              panic_high: null,
-              display_text: '',
-            },
-          ],
+          ranges: [emptyRange()],
         },
       ],
     },
@@ -373,58 +319,38 @@ export const TestFormModal: React.FC<TestFormModalProps> = ({
     if (isOpen) {
       if (testToEdit) {
         setPriceInput((testToEdit.price_paisa / 100).toFixed(2));
-        const formattedParams = testToEdit.parameters && testToEdit.parameters.length > 0
-          ? testToEdit.parameters.map((p, idx) => ({
-              parameter_name: p.parameter_name,
-              display_order: p.display_order ?? idx + 1,
-              unit: p.unit || '',
-              parameter_type: p.parameter_type || 'numeric',
-              notes: p.notes || '',
-              ranges: p.ranges && p.ranges.length > 0
-                ? p.ranges.map((r) => ({
-                    gender: r.gender || 'all',
-                    min_age_days: r.min_age_days ?? 0,
-                    max_age_days: r.max_age_days ?? 47450,
-                    normal_low: r.normal_low,
-                    normal_high: r.normal_high,
-                    panic_low: r.panic_low,
-                    panic_high: r.panic_high,
-                    display_text: r.display_text || '',
-                  }))
-                : [
-                    {
-                      gender: 'all' as const,
-                      min_age_days: 0,
-                      max_age_days: 47450,
-                      normal_low: null,
-                      normal_high: null,
-                      panic_low: null,
-                      panic_high: null,
-                      display_text: '',
-                    },
-                  ],
-            }))
-          : [
-              {
-                parameter_name: testToEdit.test_name,
-                display_order: 1,
-                unit: '',
-                parameter_type: 'numeric' as const,
-                notes: '',
-                ranges: [
-                  {
-                    gender: 'all' as const,
-                    min_age_days: 0,
-                    max_age_days: 47450,
-                    normal_low: null,
-                    normal_high: null,
-                    panic_low: null,
-                    panic_high: null,
-                    display_text: '',
-                  },
-                ],
-              },
-            ];
+        const formattedParams =
+          testToEdit.parameters && testToEdit.parameters.length > 0
+            ? testToEdit.parameters.map((p, idx) => ({
+                parameter_name: p.parameter_name,
+                display_order: p.display_order ?? idx + 1,
+                unit: p.unit || '',
+                parameter_type: p.parameter_type || 'numeric',
+                notes: p.notes || '',
+                ranges:
+                  p.ranges && p.ranges.length > 0
+                    ? p.ranges.map((r) => ({
+                        gender: r.gender || 'all',
+                        min_age_days: r.min_age_days ?? 0,
+                        max_age_days: r.max_age_days ?? 47450,
+                        normal_low: r.normal_low,
+                        normal_high: r.normal_high,
+                        panic_low: r.panic_low,
+                        panic_high: r.panic_high,
+                        display_text: r.display_text || '',
+                      }))
+                    : [emptyRange()],
+              }))
+            : [
+                {
+                  parameter_name: testToEdit.test_name,
+                  display_order: 1,
+                  unit: '',
+                  parameter_type: 'numeric' as const,
+                  notes: '',
+                  ranges: [emptyRange()],
+                },
+              ];
 
         reset({
           testCode: testToEdit.test_code,
@@ -459,18 +385,7 @@ export const TestFormModal: React.FC<TestFormModalProps> = ({
               unit: '',
               parameter_type: 'numeric',
               notes: '',
-              ranges: [
-                {
-                  gender: 'all',
-                  min_age_days: 0,
-                  max_age_days: 47450,
-                  normal_low: null,
-                  normal_high: null,
-                  panic_low: null,
-                  panic_high: null,
-                  display_text: '',
-                },
-              ],
+              ranges: [emptyRange()],
             },
           ],
         });
@@ -494,18 +409,7 @@ export const TestFormModal: React.FC<TestFormModalProps> = ({
       unit: '',
       parameter_type: 'numeric',
       notes: '',
-      ranges: [
-        {
-          gender: 'all',
-          min_age_days: 0,
-          max_age_days: 47450,
-          normal_low: null,
-          normal_high: null,
-          panic_low: null,
-          panic_high: null,
-          display_text: '',
-        },
-      ],
+      ranges: [emptyRange()],
     });
   };
 
@@ -601,315 +505,216 @@ export const TestFormModal: React.FC<TestFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 select-text overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full overflow-hidden flex flex-col my-auto max-h-[94vh]">
+    <div className="fixed inset-0 z-50 bg-[#111827]/50 flex items-center justify-center p-4 sm:p-6 select-text">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="test-form-title"
+        className="bg-white rounded-lg border border-[#E2E8F0] max-w-4xl w-full flex flex-col max-h-[94vh] text-[#1F2937]"
+      >
         {/* Header */}
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-brand-500/30 border border-brand-400/40 flex items-center justify-center text-brand-300">
-              <FlaskConical className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold">
-                {testToEdit ? `Edit Test: ${testToEdit.test_code} — ${testToEdit.test_name}` : 'Register New Diagnostic Test'}
-              </h2>
-              <p className="text-xs text-slate-300">
-                WHO Quality Standard Profile: Specimen, Turnaround, Method & Reference Ranges
-              </p>
-            </div>
+        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-[#E2E8F0] shrink-0">
+          <div>
+            <h2 id="test-form-title" className="text-base font-semibold">
+              {testToEdit ? `Edit test: ${testToEdit.test_code}, ${testToEdit.test_name}` : 'New test'}
+            </h2>
+            <p className="mt-0.5 text-[13px] text-[#64748B]">
+              Code, price, parameters and reference ranges.
+            </p>
           </div>
           <button
+            type="button"
             onClick={handleSafeClose}
-            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            aria-label="Close"
+            className="w-8 h-8 inline-flex items-center justify-center rounded-md text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#1F2937] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 overflow-y-auto space-y-6">
-          {serverError && (
-            <Alert type="error" title="Configuration Error">
-              {serverError}
-            </Alert>
-          )}
-
-          {/* Section 1: General Test Details */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-4">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <Sliders className="w-3.5 h-3.5 text-brand-600" />
-              1. Test Identification & Billing
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <Input
-                  label="Test Code (Unique)"
-                  required
-                  placeholder="e.g. CBC, BSF, LFT, WIDAL"
-                  error={errors.testCode?.message}
-                  {...register('testCode')}
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <Input
-                  label="Full Diagnostic Test Name"
-                  required
-                  placeholder="e.g. Complete Blood Picture or Fasting Blood Sugar"
-                  error={errors.testName?.message}
-                  {...register('testName')}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Laboratory Department <span className="text-red-500">*</span>
-                </label>
-                <select
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400 font-medium h-[38px]"
-                  {...register('category')}
-                >
-                  {DEFAULT_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-                {errors.category && <p className="mt-1 text-xs text-red-600 font-medium">{errors.category.message}</p>}
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Test Price (Rupees) <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2 text-slate-400 text-xs font-bold">Rs.</span>
-                  <input
-                    type="number"
-                    step="0.50"
-                    min="0"
-                    value={priceInput}
-                    onChange={handlePriceChange}
-                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-brand-400 font-bold"
-                  />
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col min-h-0">
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto bg-[#F5F7FA] px-6 py-6 space-y-6">
+            {serverError && (
+              <div
+                role="alert"
+                className="flex gap-3 rounded-lg border border-[#E2E8F0] border-l-4 border-l-[#DC2626] bg-white px-4 py-3"
+              >
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-[#DC2626]" />
+                <div>
+                  <p className="text-[13px] font-semibold">Could not save the test</p>
+                  <p className="text-[13px] text-[#64748B] mt-0.5">{serverError}</p>
                 </div>
-                {errors.pricePaisa && (
-                  <p className="mt-1 text-xs text-red-600 font-medium">{errors.pricePaisa.message}</p>
-                )}
               </div>
-            </div>
-          </div>
-
-          {/* Section 2: WHO Specimen, Collection & Operational Standards */}
-          <div className="p-4 rounded-xl bg-sky-50/40 border border-sky-100 space-y-4">
-            <h3 className="text-xs font-bold text-sky-900 uppercase tracking-wider flex items-center gap-1.5">
-              <TestTube2 className="w-3.5 h-3.5 text-sky-600" />
-              2. Specimen, Container & Patient Preparation (WHO Standards)
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Sample / Specimen Type
-                </label>
-                <input
-                  type="text"
-                  list="sample-type-presets"
-                  placeholder="e.g. Whole Blood (EDTA), Serum, Urine"
-                  {...register('sampleType')}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400"
-                />
-                <datalist id="sample-type-presets">
-                  {SAMPLE_TYPE_PRESETS.map((s) => (
-                    <option key={s} value={s} />
-                  ))}
-                </datalist>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Collection Container / Tube
-                </label>
-                <input
-                  type="text"
-                  list="container-presets"
-                  placeholder="e.g. Purple Top (EDTA), Yellow Top (Gel)"
-                  {...register('collectionContainer')}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400"
-                />
-                <datalist id="container-presets">
-                  {CONTAINER_PRESETS.map((c) => (
-                    <option key={c} value={c} />
-                  ))}
-                </datalist>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Patient Preparation / Fasting Instruction
-                </label>
-                <input
-                  type="text"
-                  list="preparation-presets"
-                  placeholder="e.g. 10 - 12 Hours Fasting or Random"
-                  {...register('patientPreparation')}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400"
-                />
-                <datalist id="preparation-presets">
-                  {PREPARATION_PRESETS.map((p) => (
-                    <option key={p} value={p} />
-                  ))}
-                </datalist>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Turnaround Time (TAT)
-                </label>
-                <input
-                  type="text"
-                  list="tat-presets"
-                  placeholder="e.g. 2 Hours or Same Day"
-                  {...register('turnaroundTime')}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400"
-                />
-                <datalist id="tat-presets">
-                  {TAT_PRESETS.map((t) => (
-                    <option key={t} value={t} />
-                  ))}
-                </datalist>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Test Analytical Method / Principle
-                </label>
-                <input
-                  type="text"
-                  list="method-presets"
-                  placeholder="e.g. Automated Analyzer, Chemiluminescence, Spectrophotometry"
-                  {...register('testMethod')}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400"
-                />
-                <datalist id="method-presets">
-                  {METHOD_PRESETS.map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 3: Test Parameters & Clinical Reference Ranges */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-brand-600" />
-                  3. Test Parameters, Result Types & Reference Intervals ({fields.length})
-                </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Define parameters (e.g. Hemoglobin, TLC, Platelets for CBC), select Numeric or Qualitative result type, and set normal limits.
-                </p>
-              </div>
-              <Button type="button" size="sm" variant="outline" onClick={handleAddParameter}>
-                <Plus className="w-3.5 h-3.5 mr-1" />
-                Add Parameter
-              </Button>
-            </div>
-
-            {errors.parameters && typeof errors.parameters.message === 'string' && (
-              <p className="text-xs text-red-600 font-medium">{errors.parameters.message}</p>
             )}
 
-            <div className="space-y-4">
-              {fields.map((field, index) => (
-                <div
-                  key={field.id}
-                  className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm space-y-4"
-                >
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <span className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px]">
-                        {index + 1}
-                      </span>
-                      Parameter #{index + 1}
-                    </span>
+            {/* Test details */}
+            <section className="bg-white border border-[#E2E8F0] rounded-lg">
+              <div className="px-5 py-4 border-b border-[#E2E8F0]">
+                <h3 className="text-sm font-semibold">Test details</h3>
+                <p className="text-xs text-[#64748B] mt-0.5">Identification, department and price.</p>
+              </div>
 
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-4">
+                <div>
+                  <Label htmlFor="testCode" required>Test code</Label>
+                  <input
+                    id="testCode"
+                    placeholder="CBC, LFT, WIDAL"
+                    className={inputClass}
+                    {...register('testCode')}
+                  />
+                  {errors.testCode?.message ? (
+                    <p className="mt-1.5 text-xs text-[#DC2626]">{errors.testCode.message}</p>
+                  ) : (
+                    <p className="mt-1.5 text-xs text-[#64748B]">Must be unique.</p>
+                  )}
+                </div>
+
+                <div className="sm:col-span-2">
+                  <Label htmlFor="testName" required>Test name</Label>
+                  <input
+                    id="testName"
+                    placeholder="Complete blood picture"
+                    className={inputClass}
+                    {...register('testName')}
+                  />
+                  {errors.testName?.message && (
+                    <p className="mt-1.5 text-xs text-[#DC2626]">{errors.testName.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <Label htmlFor="category" required>Department</Label>
+                  <select id="category" className={inputClass} {...register('category')}>
+                    {DEFAULT_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.category && <p className="mt-1.5 text-xs text-[#DC2626]">{errors.category.message}</p>}
+                </div>
+
+                <div className="sm:col-span-2">
+                  <Label htmlFor="price" required>Price (PKR)</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-[13px] text-[#64748B]" aria-hidden="true">
+                      Rs.
+                    </span>
+                    <input
+                      id="price"
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      value={priceInput}
+                      onChange={handlePriceChange}
+                      className={`${inputClass} pl-10 tabular-nums`}
+                    />
+                  </div>
+                  {errors.pricePaisa && (
+                    <p className="mt-1.5 text-xs text-[#DC2626]">{errors.pricePaisa.message}</p>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* Parameters */}
+            <section className="space-y-4">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Parameters <span className="font-normal text-[#64748B] tabular-nums">({fields.length})</span>
+                  </h3>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    For a CBC these would be hemoglobin, TLC, platelets and so on. Choose a result type and set the limits for each.
+                  </p>
+                </div>
+                <button type="button" onClick={handleAddParameter} className={`${secondaryBtn} shrink-0`}>
+                  <Plus className="w-4 h-4 text-[#64748B]" />
+                  Add parameter
+                </button>
+              </div>
+
+              {errors.parameters && typeof errors.parameters.message === 'string' && (
+                <p className="text-xs text-[#DC2626]">{errors.parameters.message}</p>
+              )}
+
+              {fields.map((field, index) => (
+                <div key={field.id} className="bg-white border border-[#E2E8F0] rounded-lg">
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-[#E2E8F0]">
+                    <h4 className="text-sm font-semibold">Parameter {index + 1}</h4>
                     {fields.length > 1 && (
                       <button
                         type="button"
                         onClick={() => remove(index)}
-                        className="text-slate-400 hover:text-red-600 p-1 rounded transition-colors text-xs flex items-center gap-1 font-medium"
-                        title="Remove Parameter"
+                        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#64748B] hover:text-[#DC2626] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Remove Parameter
+                        <Trash2 className="w-4 h-4" />
+                        Remove
                       </button>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-1">
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Parameter Name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Hemoglobin or Serum Creatinine"
-                        {...register(`parameters.${index}.parameter_name` as const)}
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-500 font-medium"
-                      />
+                  <div className="p-5 space-y-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <Label htmlFor={`param-${index}-name`} required>Parameter name</Label>
+                        <input
+                          id={`param-${index}-name`}
+                          type="text"
+                          placeholder="Hemoglobin"
+                          {...register(`parameters.${index}.parameter_name` as const)}
+                          className={inputClass}
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`param-${index}-type`} required>Result type</Label>
+                        <select
+                          id={`param-${index}-type`}
+                          {...register(`parameters.${index}.parameter_type` as const)}
+                          className={inputClass}
+                        >
+                          <option value="numeric">Numeric</option>
+                          <option value="text">Text (positive, negative and so on)</option>
+                          <option value="options">Options (multiple choice)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`param-${index}-unit`} optional>Unit</Label>
+                        <input
+                          id={`param-${index}-unit`}
+                          type="text"
+                          placeholder="g/dL, mg/dL, U/L, %"
+                          {...register(`parameters.${index}.unit` as const)}
+                          className={inputClass}
+                        />
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Result Type <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        {...register(`parameters.${index}.parameter_type` as const)}
-                        className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-500 font-medium h-[34px]"
-                      >
-                        <option value="numeric">Numeric (Quantitative Numbers)</option>
-                        <option value="text">Qualitative / Text (Positive, Negative, etc.)</option>
-                        <option value="options">Options (Multi-Choice)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Measurement Unit <span className="text-slate-400 font-normal">(Optional)</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. g/dL, mg/dL, U/L, %"
-                        {...register(`parameters.${index}.unit` as const)}
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
-                      />
-                    </div>
+                    <ParameterRangesEditor
+                      control={control}
+                      paramIndex={index}
+                      register={register}
+                      errors={errors}
+                    />
                   </div>
-
-                  {/* Multiple Reference Ranges & Panic Limits Sub-Editor */}
-                  <ParameterRangesEditor
-                    control={control}
-                    paramIndex={index}
-                    register={register}
-                    errors={errors}
-                  />
                 </div>
               ))}
-            </div>
+            </section>
           </div>
 
-          {/* Action Footer */}
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-            <Button type="button" variant="outline" onClick={handleSafeClose}>
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-3 px-6 py-3 border-t border-[#E2E8F0] bg-white rounded-b-lg shrink-0">
+            <button type="button" onClick={handleSafeClose} className={secondaryBtn}>
               Cancel
-            </Button>
-            <Button type="submit" isLoading={isSubmitting}>
-              {testToEdit ? 'Save Changes' : 'Save Test to Catalog'}
-            </Button>
+            </button>
+            <button type="submit" disabled={isSubmitting} className={primaryBtn}>
+              {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isSubmitting ? 'Saving…' : testToEdit ? 'Save changes' : 'Save test'}
+            </button>
           </div>
         </form>
       </div>
