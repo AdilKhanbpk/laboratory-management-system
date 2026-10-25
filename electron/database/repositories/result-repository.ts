@@ -754,6 +754,18 @@ export class ResultRepository {
 
       const parameterResults = params.map((p) => {
         const res = resultMap.get(p.id) || null;
+        let refDisplay = res?.reference_range_display;
+        if (!refDisplay) {
+          const ranges = db
+            .prepare(`SELECT * FROM parameter_reference_ranges WHERE parameter_id = ?`)
+            .all(p.id) as ParameterRangeRule[];
+          const matched = RangeMatcher.findMatchingRange(ranges, {
+            gender: patient.gender,
+            dateOfBirth: patient.date_of_birth,
+            orderDate: visit.order_date,
+          });
+          refDisplay = matched?.display_text || (ranges.length > 0 ? ranges[0].display_text : 'Reference range not configured');
+        }
         return {
           parameter: {
             id: p.id,
@@ -764,7 +776,7 @@ export class ResultRepository {
           },
           result: res,
           flag: res?.flag || 'unconfigured',
-          referenceRangeDisplay: res?.reference_range_display || 'Reference range not configured',
+          referenceRangeDisplay: refDisplay,
         };
       });
 

@@ -7,25 +7,75 @@ import {
   HospitalSettings,
   SafeUser,
 } from '../../types';
-import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-import { Input } from '../../components/common/Input';
 import { Alert } from '../../components/common/Alert';
 import { UserManagementTab } from './UserManagementTab';
-import {
-  Save,
-  KeyRound,
-  Upload,
-  Image as ImageIcon,
-  Building2,
-  Users,
-} from 'lucide-react';
+import { Save, Upload } from 'lucide-react';
+
+/*
+ * Tokens shared with the rest of the app:
+ *   primary #0F766E / hover #115E59, page #F5F7FA, surface #FFFFFF,
+ *   text #1F2937, muted #64748B, border #E2E8F0, error #DC2626.
+ *   Radius 8px, no shadows.
+ */
 
 interface HospitalSettingsViewProps {
   hospital: HospitalSettings;
   currentUser?: SafeUser;
   onUpdate: (updated: HospitalSettings) => void;
 }
+
+const FALLBACK_USER = {
+  id: 1,
+  username: 'admin',
+  full_name: 'Administrator',
+  role: 'admin',
+  is_active: 1,
+  failed_login_attempts: 0,
+  locked_until: null,
+  created_at: '',
+  updated_at: '',
+  last_login_at: null,
+} as SafeUser;
+
+const inputCls =
+  'h-9 w-full px-3 rounded-lg border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] placeholder:text-slate-400 focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E] disabled:bg-[#F8FAFC] disabled:text-[#64748B] disabled:cursor-not-allowed aria-[invalid=true]:border-[#DC2626] aria-[invalid=true]:focus:ring-[#DC2626]';
+
+const Field: React.FC<{
+  label: string;
+  htmlFor: string;
+  hint?: string;
+  error?: string;
+  className?: string;
+  children: React.ReactNode;
+}> = ({ label, htmlFor, hint, error, className = '', children }) => (
+  <div className={className}>
+    <label htmlFor={htmlFor} className="block text-[13px] font-medium mb-1">
+      {label}
+    </label>
+    {children}
+    {error ? (
+      <p className="text-xs text-[#DC2626] mt-1" role="alert">
+        {error}
+      </p>
+    ) : hint ? (
+      <p className="text-xs text-[#64748B] mt-1">{hint}</p>
+    ) : null}
+  </div>
+);
+
+/** A block inside the settings panel: heading, one-line help, then its fields. */
+const Block: React.FC<{
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}> = ({ title, description, children }) => (
+  <section className="px-6 py-5 border-b border-[#E2E8F0]">
+    <h2 className="text-sm font-semibold">{title}</h2>
+    {description && <p className="text-[13px] text-[#64748B] mt-0.5">{description}</p>}
+    <div className="mt-4">{children}</div>
+  </section>
+);
 
 export const HospitalSettingsView: React.FC<HospitalSettingsViewProps> = ({
   hospital,
@@ -41,16 +91,16 @@ export const HospitalSettingsView: React.FC<HospitalSettingsViewProps> = ({
 
   useEffect(() => {
     window.electronAPI.settings.getLogoUrl().then((res) => {
-      if (res.success && res.data) {
-        setLogoUrl(res.data);
-      }
+      if (res.success && res.data) setLogoUrl(res.data);
     });
   }, [hospital.logo_relative_path]);
 
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    reset,
+    watch,
+    formState: { errors, isDirty },
   } = useForm<UpdateHospitalSettingsInput>({
     resolver: zodResolver(UpdateHospitalSettingsSchema),
     defaultValues: {
@@ -66,6 +116,14 @@ export const HospitalSettingsView: React.FC<HospitalSettingsViewProps> = ({
     },
   });
 
+  const live = watch();
+
+  const switchTab = (tab: 'facility' | 'users') => {
+    setActiveTab(tab);
+    setSuccessMsg(null);
+    setErrorMsg(null);
+  };
+
   const onSubmit = async (data: UpdateHospitalSettingsInput) => {
     setIsSubmitting(true);
     setSuccessMsg(null);
@@ -74,26 +132,27 @@ export const HospitalSettingsView: React.FC<HospitalSettingsViewProps> = ({
     try {
       const res = await window.electronAPI.settings.updateHospital(data);
       if (!res.success || !res.data) {
-        setErrorMsg(res.error || 'Failed to update settings.');
-        setIsSubmitting(false);
+        setErrorMsg(res.error || 'Could not save the settings.');
         return;
       }
-
       onUpdate(res.data);
-      setSuccessMsg('Hospital configuration updated successfully.');
+      reset(data);
+      setSuccessMsg('Settings saved.');
     } catch {
-      setErrorMsg('An unexpected error occurred while saving.');
+      setErrorMsg('Something went wrong while saving. Try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleLogoFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      setErrorMsg('Logo file exceeds the 2 MB maximum limit.');
+      setErrorMsg('The logo is larger than 2 MB. Choose a smaller image.');
+      input.value = '';
       return;
     }
 
@@ -102,6 +161,7 @@ export const HospitalSettingsView: React.FC<HospitalSettingsViewProps> = ({
       const base64 = reader.result as string;
       setIsUploadingLogo(true);
       setErrorMsg(null);
+      setSuccessMsg(null);
       try {
         const res = await window.electronAPI.settings.uploadLogo(base64);
         if (res.success && res.data) {
@@ -111,233 +171,340 @@ export const HospitalSettingsView: React.FC<HospitalSettingsViewProps> = ({
             logo_relative_path: res.data.logoPath,
             logo_url: res.data.logoUrl,
           });
-          setSuccessMsg('Hospital logo updated successfully.');
+          setSuccessMsg('Logo updated.');
         } else {
-          setErrorMsg(res.error || 'Failed to save logo image.');
+          setErrorMsg(res.error || 'Could not save the logo.');
         }
       } catch (err: any) {
-        setErrorMsg(err?.message || 'Error processing logo upload.');
+        setErrorMsg(err?.message || 'Could not upload the logo.');
       } finally {
         setIsUploadingLogo(false);
+        input.value = '';
       }
     };
     reader.readAsDataURL(file);
   };
 
+  const tabCls = (active: boolean) =>
+    `pb-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded-sm ${
+      active
+        ? 'border-[#0F766E] text-[#0F766E]'
+        : 'border-transparent text-[#64748B] hover:text-[#1F2937]'
+    }`;
+
+  // Preview text, built from what is typed right now
+  const phones = [live.phone_primary, live.phone_secondary].filter(Boolean).join(' / ');
+  const contactLine = [live.address, phones && `Tel ${phones}`, live.email]
+    .filter(Boolean)
+    .join('  |  ');
+
   return (
-    <div className="max-w-4xl space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">Hospital & System Settings</h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Configure facility information, official logo, contact headers, and user account access permissions.
+    <div className="max-w-[1200px] text-[#1F2937]">
+      {/* Page header */}
+      <div className="mb-4">
+        <h1 className="text-lg font-semibold leading-6">Laboratory settings</h1>
+        <p className="text-[13px] text-[#64748B] mt-0.5">
+          Details printed on reports and receipts, and who can sign in.
         </p>
       </div>
 
-      {/* Sub-Tabs Navigation */}
-      <div className="flex items-center gap-4 border-b border-slate-200">
+      <div className="flex items-center gap-6 border-b border-[#E2E8F0] mb-5" role="tablist">
         <button
-          onClick={() => setActiveTab('facility')}
-          className={`pb-3 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'facility'
-              ? 'border-brand-600 text-brand-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'facility'}
+          onClick={() => switchTab('facility')}
+          className={tabCls(activeTab === 'facility')}
         >
-          <Building2 className="w-4 h-4" />
-          Facility Profile & Official Logo
+          Laboratory
         </button>
-
         <button
-          onClick={() => setActiveTab('users')}
-          className={`pb-3 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'users'
-              ? 'border-brand-600 text-brand-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'users'}
+          onClick={() => switchTab('users')}
+          className={tabCls(activeTab === 'users')}
         >
-          <Users className="w-4 h-4" />
-          User Accounts & Access Control
+          Users and access
         </button>
       </div>
 
       {activeTab === 'facility' && (
-        <div className="space-y-6">
+        <>
+          {(successMsg || errorMsg) && (
+            <div className="mb-4 space-y-2">
+              {successMsg && <Alert type="success">{successMsg}</Alert>}
+              {errorMsg && <Alert type="error">{errorMsg}</Alert>}
+            </div>
+          )}
 
-      {successMsg && (
-        <Alert type="success" title="Success">
-          {successMsg}
-        </Alert>
-      )}
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+            {/* Settings panel */}
+            <form
+              onSubmit={handleSubmit(onSubmit)}
+              noValidate
+              className="bg-white border border-[#E2E8F0] rounded-lg overflow-hidden"
+            >
+              {/* Logo */}
+              <Block
+                title="Logo"
+                description="Printed at the top of reports, receipts and patient slips."
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-[72px] h-[72px] rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-center p-1.5 shrink-0">
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt="Laboratory logo"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    ) : (
+                      <span className="text-xs text-[#64748B]">No logo</span>
+                    )}
+                  </div>
 
-      {errorMsg && (
-        <Alert type="error" title="Error">
-          {errorMsg}
-        </Alert>
-      )}
+                  <div>
+                    <label
+                      className={`inline-flex items-center gap-2 h-8 px-3 rounded-lg border border-[#CBD5E1] bg-white text-[13px] font-medium hover:bg-slate-50 focus-within:ring-2 focus-within:ring-[#0F766E] ${
+                        isUploadingLogo ? 'opacity-60 cursor-wait' : 'cursor-pointer'
+                      }`}
+                    >
+                      <Upload className="w-3.5 h-3.5 text-[#64748B]" />
+                      {isUploadingLogo
+                        ? 'Uploading…'
+                        : logoUrl
+                        ? 'Replace logo'
+                        : 'Choose image'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="sr-only"
+                        onChange={handleLogoFileSelect}
+                        disabled={isUploadingLogo}
+                      />
+                    </label>
+                    <p className="text-xs text-[#64748B] mt-1.5">
+                      PNG, JPEG or WebP, up to 2 MB. A transparent PNG prints best.
+                    </p>
+                  </div>
+                </div>
+              </Block>
 
-      {/* Laboratory Logo Upload Card */}
-      <Card title="Official Laboratory Logo" subtitle="Appears on printed diagnostic reports, bills, and patient slips">
-        <div className="flex flex-col sm:flex-row items-center gap-6">
-          <div className="w-28 h-28 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 flex items-center justify-center p-2 overflow-hidden shrink-0">
-            {logoUrl ? (
-              <img src={logoUrl} alt="Laboratory Logo" className="max-h-full max-w-full object-contain" />
-            ) : (
-              <div className="text-center text-slate-400">
-                <ImageIcon className="w-8 h-8 mx-auto mb-1 opacity-50" />
-                <span className="text-[10px]">No Logo Set</span>
+              {/* Details */}
+              <Block title="Laboratory details">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
+                  <Field
+                    label="Laboratory name"
+                    htmlFor="hospital_name"
+                    className="sm:col-span-2"
+                    error={errors.hospital_name?.message}
+                  >
+                    <input
+                      id="hospital_name"
+                      className={inputCls}
+                      aria-invalid={!!errors.hospital_name}
+                      {...register('hospital_name')}
+                    />
+                  </Field>
+
+                  <Field
+                    label="Tagline"
+                    htmlFor="tagline"
+                    hint="Optional. Shown under the name."
+                    className="sm:col-span-2"
+                    error={errors.tagline?.message}
+                  >
+                    <input
+                      id="tagline"
+                      className={inputCls}
+                      aria-invalid={!!errors.tagline}
+                      {...register('tagline')}
+                    />
+                  </Field>
+
+                  <Field
+                    label="Address"
+                    htmlFor="address"
+                    className="sm:col-span-2"
+                    error={errors.address?.message}
+                  >
+                    <input
+                      id="address"
+                      className={inputCls}
+                      aria-invalid={!!errors.address}
+                      {...register('address')}
+                    />
+                  </Field>
+
+                  <Field
+                    label="Phone"
+                    htmlFor="phone_primary"
+                    error={errors.phone_primary?.message}
+                  >
+                    <input
+                      id="phone_primary"
+                      className={inputCls}
+                      aria-invalid={!!errors.phone_primary}
+                      {...register('phone_primary')}
+                    />
+                  </Field>
+
+                  <Field
+                    label="Second phone"
+                    htmlFor="phone_secondary"
+                    hint="Optional."
+                    error={errors.phone_secondary?.message}
+                  >
+                    <input
+                      id="phone_secondary"
+                      className={inputCls}
+                      aria-invalid={!!errors.phone_secondary}
+                      {...register('phone_secondary')}
+                    />
+                  </Field>
+
+                  <Field
+                    label="Email"
+                    htmlFor="email"
+                    className="sm:col-span-2"
+                    error={errors.email?.message}
+                  >
+                    <input
+                      id="email"
+                      type="email"
+                      className={inputCls}
+                      aria-invalid={!!errors.email}
+                      {...register('email')}
+                    />
+                  </Field>
+                </div>
+              </Block>
+
+              {/* System */}
+              <Block title="System" description="Applies to this workstation.">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-4">
+                  <Field
+                    label="Currency"
+                    htmlFor="currency_code"
+                    hint="Fixed. Amounts are stored in paisa."
+                    error={errors.currency_code?.message}
+                  >
+                    <input
+                      id="currency_code"
+                      className={inputCls}
+                      disabled
+                      {...register('currency_code')}
+                    />
+                  </Field>
+
+                  <Field
+                    label="Time zone"
+                    htmlFor="timezone"
+                    hint="For example, Asia/Karachi."
+                    error={errors.timezone?.message}
+                  >
+                    <input
+                      id="timezone"
+                      className={inputCls}
+                      aria-invalid={!!errors.timezone}
+                      {...register('timezone')}
+                    />
+                  </Field>
+
+                  <Field
+                    label="Lock screen after"
+                    htmlFor="inactivity_timeout_minutes"
+                    hint="Minutes without activity."
+                    error={errors.inactivity_timeout_minutes?.message}
+                  >
+                    <input
+                      id="inactivity_timeout_minutes"
+                      type="number"
+                      min={1}
+                      className={inputCls}
+                      aria-invalid={!!errors.inactivity_timeout_minutes}
+                      {...register('inactivity_timeout_minutes', { valueAsNumber: true })}
+                    />
+                  </Field>
+                </div>
+              </Block>
+
+              {/* Save bar stays in view while scrolling */}
+              <div className="sticky bottom-0 bg-white border-t border-[#E2E8F0] px-6 py-3 flex items-center justify-between gap-3">
+                <span className="text-[13px] text-[#64748B]">
+                  {isDirty ? 'You have unsaved changes' : 'All changes saved'}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!isDirty || isSubmitting}
+                    onClick={() => reset()}
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    isLoading={isSubmitting}
+                    disabled={!isDirty}
+                    className="bg-[#0F766E] hover:bg-[#115E59]"
+                  >
+                    <Save className="w-3.5 h-3.5 mr-1.5" />
+                    Save changes
+                  </Button>
+                </div>
               </div>
-            )}
+            </form>
+
+            {/* Live preview of the printed header */}
+            <aside className="bg-white border border-[#E2E8F0] rounded-lg xl:sticky xl:top-4">
+              <div className="px-5 py-3 border-b border-[#E2E8F0]">
+                <h2 className="text-sm font-semibold">Printed header</h2>
+                <p className="text-[13px] text-[#64748B] mt-0.5">
+                  How reports and receipts will start. Updates as you type.
+                </p>
+              </div>
+
+              <div className="p-4 bg-[#F5F7FA]">
+                <div className="bg-white border border-[#E2E8F0] rounded-lg px-4 py-5 text-center">
+                  {logoUrl && (
+                    <img
+                      src={logoUrl}
+                      alt=""
+                      className="h-12 w-auto mx-auto mb-2 object-contain"
+                    />
+                  )}
+                  <p
+                    className={`text-[15px] font-semibold leading-5 ${
+                      live.hospital_name ? '' : 'text-[#94A3B8]'
+                    }`}
+                  >
+                    {live.hospital_name || 'Laboratory name'}
+                  </p>
+                  {live.tagline && (
+                    <p className="text-xs text-[#64748B] mt-0.5">{live.tagline}</p>
+                  )}
+                  <p
+                    className={`text-xs mt-1.5 leading-4 ${
+                      contactLine ? 'text-[#64748B]' : 'text-[#94A3B8]'
+                    }`}
+                  >
+                    {contactLine || 'Address, phone and email'}
+                  </p>
+
+                  <div className="mt-4 pt-3 border-t border-[#E2E8F0] text-left text-xs text-[#94A3B8]">
+                    Report content starts here
+                  </div>
+                </div>
+              </div>
+            </aside>
           </div>
-
-          <div className="space-y-2 flex-1">
-            <h4 className="text-xs font-semibold text-slate-800">Upload High-Resolution Logo</h4>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Supports PNG (transparent backgrounds recommended), JPEG, and WebP up to 2 MB. Stored securely in application local storage with automated magic byte verification.
-            </p>
-            <div className="pt-1">
-              <label className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium cursor-pointer shadow-sm transition-colors">
-                <Upload className="w-3.5 h-3.5 text-slate-500" />
-                <span>{isUploadingLogo ? 'Uploading...' : 'Choose Image File'}</span>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={handleLogoFileSelect}
-                  disabled={isUploadingLogo}
-                />
-              </label>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {/* Facility Profile Form */}
-      <Card title="Facility Profile & Report Header" subtitle="These details will appear on printed test reports and bills">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <Input
-                label="Hospital / Diagnostic Laboratory Name"
-                error={errors.hospital_name?.message}
-                {...register('hospital_name')}
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <Input
-                label="Department / Tagline Subtitle"
-                error={errors.tagline?.message}
-                {...register('tagline')}
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <Input
-                label="Physical Address"
-                error={errors.address?.message}
-                {...register('address')}
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Primary Phone"
-                error={errors.phone_primary?.message}
-                {...register('phone_primary')}
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Secondary Phone"
-                error={errors.phone_secondary?.message}
-                {...register('phone_secondary')}
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Laboratory Email"
-                error={errors.email?.message}
-                {...register('email')}
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Currency Code"
-                disabled
-                helperText="Fixed to PKR (stored as minor unit paisa)"
-                error={errors.currency_code?.message}
-                {...register('currency_code')}
-              />
-            </div>
-
-            <div>
-              <Input
-                label="Timezone"
-                helperText="e.g. Asia/Karachi"
-                error={errors.timezone?.message}
-                {...register('timezone')}
-              />
-            </div>
-
-            <div>
-              <Input
-                type="number"
-                label="Inactivity Lockout (Minutes)"
-                helperText="Screen will automatically lock after this period"
-                error={errors.inactivity_timeout_minutes?.message}
-                {...register('inactivity_timeout_minutes', { valueAsNumber: true })}
-              />
-            </div>
-          </div>
-
-          <div className="pt-4 flex justify-end">
-            <Button type="submit" isLoading={isSubmitting}>
-              <Save className="w-4 h-4 mr-1.5" />
-              Save Configuration
-            </Button>
-          </div>
-        </form>
-      </Card>
-
-      {/* Security Architecture & Disaster Recovery Explanation Card */}
-      <Card title="Security & Key Recovery Protocol" subtitle="Mandatory operational safety rules for the workstation">
-        <div className="space-y-4 text-xs text-slate-600 leading-relaxed">
-          <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-amber-900">
-            <div className="flex items-center gap-2 font-semibold mb-1 text-amber-800">
-              <KeyRound className="w-4 h-4 text-amber-600" />
-              Windows DPAPI Key Protection
-            </div>
-            <p>
-              The 256-bit database encryption key is protected using Windows DPAPI (Data Protection API), which ties cryptographic access to this specific Windows user account.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-            <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
-              <h4 className="font-semibold text-slate-800 mb-1">Single-Operator Protection</h4>
-              <p className="text-slate-500">
-                The initial administrator account cannot be deleted. All failed login attempts enforce a 15-minute lockout after 5 consecutive failures.
-              </p>
-            </div>
-
-            <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
-              <h4 className="font-semibold text-slate-800 mb-1">Encrypted Offline Backups</h4>
-              <p className="text-slate-500">
-                Backups generated by the application preserve the exact AES cipher encryption and cannot be read as plaintext on any computer without authorized credentials.
-              </p>
-            </div>
-          </div>
-        </div>
-      </Card>
-        </div>
+        </>
       )}
 
-      {activeTab === 'users' && (
-        <UserManagementTab currentUser={currentUser || { id: 1, username: 'admin', full_name: 'Administrator', role: 'admin', is_active: 1, failed_login_attempts: 0, locked_until: null, created_at: '', updated_at: '', last_login_at: null }} />
-      )}
+      {activeTab === 'users' && <UserManagementTab currentUser={currentUser || FALLBACK_USER} />}
     </div>
   );
 };

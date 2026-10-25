@@ -1,66 +1,87 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  BackupResult,
-  BackupMetadata,
-  AppInfo,
-} from '../../types';
-import { Card } from '../../components/common/Card';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { BackupResult, BackupMetadata, AppInfo } from '../../types';
 import { Button } from '../../components/common/Button';
-import { Badge } from '../../components/common/Badge';
 import { Alert } from '../../components/common/Alert';
 import { formatDateTime } from '../../lib/utils';
-import {
-  HardDrive,
-  FolderOpen,
-  CheckCircle2,
-  Clock,
-  Archive,
-  RefreshCw,
-  FolderUp,
-  Trash2,
-} from 'lucide-react';
+import { FolderOpen, RefreshCw, Archive } from 'lucide-react';
+
+/*
+ * Same tokens as the rest of the app: primary #0F766E / #115E59, page #F5F7FA,
+ * text #1F2937, muted #64748B, border #E2E8F0, warning #D97706, error #DC2626,
+ * success #15803D. Radius 8px, no shadows.
+ */
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+};
+
+const daysSince = (iso: string): number => {
+  const ms = Date.now() - new Date(iso).getTime();
+  return Math.max(0, Math.floor(ms / 86_400_000));
+};
+
+const agoText = (days: number): string =>
+  days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+
+/** Label above a value, used in the result and status lists. */
+const Detail: React.FC<{ label: string; children: React.ReactNode; mono?: boolean }> = ({
+  label,
+  children,
+  mono,
+}) => (
+  <div>
+    <dt className="text-xs text-[#64748B]">{label}</dt>
+    <dd className={`text-[13px] mt-0.5 break-all ${mono ? 'font-mono text-xs' : ''}`}>{children}</dd>
+  </div>
+);
 
 export const BackupRestoreView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'backup' | 'archives'>('backup');
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
 
-  // Backup State
   const [selectedDestination, setSelectedDestination] = useState<string | null>(null);
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
   const [backupResult, setBackupResult] = useState<BackupResult | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
 
-  // Purge Older Backups Confirmation Modal State
   const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
-  const [purgeSuccessMessage, setPurgeSuccessMessage] = useState<string | null>(null);
+  const [purgeMessage, setPurgeMessage] = useState<{ type: 'info' | 'error'; text: string } | null>(
+    null
+  );
 
-  // Local Archives State
   const [localBackups, setLocalBackups] = useState<BackupMetadata[]>([]);
   const [isLoadingLocal, setIsLoadingLocal] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
 
-  // Fetch Backups List
-  const fetchLocalBackups = useCallback(async (dirOverride?: string) => {
-    setIsLoadingLocal(true);
-    try {
-      const targetDir = dirOverride !== undefined ? dirOverride : selectedDestination;
-      const res = await window.electronAPI.backup.listLocal(targetDir || undefined);
-      if (res.success && res.data) {
-        setLocalBackups(res.data);
+  const fetchLocalBackups = useCallback(
+    async (dirOverride?: string) => {
+      setIsLoadingLocal(true);
+      setListError(null);
+      try {
+        const targetDir = dirOverride !== undefined ? dirOverride : selectedDestination;
+        const res = await window.electronAPI.backup.listLocal(targetDir || undefined);
+        if (res.success && res.data) {
+          setLocalBackups(res.data);
+        } else if (!res.success) {
+          setListError(res.error || 'Could not read the backup folder.');
+        }
+      } catch (err: any) {
+        console.error('Failed to list backups:', err);
+        setListError(err?.message || 'Could not read the backup folder.');
+      } finally {
+        setIsLoadingLocal(false);
       }
-    } catch (err) {
-      console.error('Failed to list backups:', err);
-    } finally {
-      setIsLoadingLocal(false);
-    }
-  }, [selectedDestination]);
+    },
+    [selectedDestination]
+  );
 
-  // Initial Load: App Info & Persistent Default Backup Path
   useEffect(() => {
     window.electronAPI.app.getInfo().then((res) => {
-      if (res.success && res.data) {
-        setAppInfo(res.data);
-      }
+      if (res.success && res.data) setAppInfo(res.data);
     });
 
     window.electronAPI.settings.getHospital().then((res) => {
@@ -73,18 +94,22 @@ export const BackupRestoreView: React.FC = () => {
     });
   }, [fetchLocalBackups]);
 
-  // Handle Destination Selection & Automatically Save as Persistent Default
+  useEffect(() => {
+    if (!showPurgeModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isPurging) setShowPurgeModal(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showPurgeModal, isPurging]);
+
   const handleSelectDestination = async () => {
     try {
       const res = await window.electronAPI.backup.selectDestination();
       if (res.success && res.data) {
         const chosenPath = res.data;
         setSelectedDestination(chosenPath);
-
-        // Permanently persist in hospital settings database
         await window.electronAPI.backup.setDefaultPath(chosenPath);
-
-        // Immediately refresh list from this folder
         fetchLocalBackups(chosenPath);
       }
     } catch (err) {
@@ -92,12 +117,11 @@ export const BackupRestoreView: React.FC = () => {
     }
   };
 
-  // Handle Create Backup
   const handleCreateBackup = async () => {
     setIsCreatingBackup(true);
     setBackupError(null);
     setBackupResult(null);
-    setPurgeSuccessMessage(null);
+    setPurgeMessage(null);
 
     try {
       const res = await window.electronAPI.backup.create({
@@ -107,19 +131,17 @@ export const BackupRestoreView: React.FC = () => {
       if (res.success && res.data) {
         setBackupResult(res.data);
         await fetchLocalBackups(selectedDestination || undefined);
-        // Directly open confirmation modal asking if older backups should be removed
         setShowPurgeModal(true);
       } else {
-        setBackupError(res.error || 'Failed to create database backup.');
+        setBackupError(res.error || 'The backup could not be created.');
       }
     } catch (err: any) {
-      setBackupError(err?.message || 'Error occurred during backup execution.');
+      setBackupError(err?.message || 'Something went wrong while creating the backup.');
     } finally {
       setIsCreatingBackup(false);
     }
   };
 
-  // Handle Confirming Purge of Older Backups
   const handleConfirmPurge = async () => {
     setIsPurging(true);
     try {
@@ -129,277 +151,299 @@ export const BackupRestoreView: React.FC = () => {
       });
 
       if (res.success && res.data) {
-        setPurgeSuccessMessage(
-          res.data.deletedCount > 0
-            ? `Successfully removed ${res.data.deletedCount} older backup file(s). Only your newest backup is kept.`
-            : 'No older backup files found to delete.'
-        );
+        setPurgeMessage({
+          type: 'info',
+          text:
+            res.data.deletedCount > 0
+              ? `Deleted ${res.data.deletedCount} older backup${
+                  res.data.deletedCount > 1 ? 's' : ''
+                }. Only the newest backup is kept.`
+              : 'There were no older backups to delete.',
+        });
         fetchLocalBackups(selectedDestination || undefined);
+      } else {
+        setPurgeMessage({ type: 'error', text: res.error || 'Could not delete the older backups.' });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to purge older backups:', err);
+      setPurgeMessage({
+        type: 'error',
+        text: err?.message || 'Could not delete the older backups.',
+      });
     } finally {
       setIsPurging(false);
       setShowPurgeModal(false);
     }
   };
 
-  const handleDismissPurgeModal = () => {
-    setShowPurgeModal(false);
-  };
+  // Newest standard backup, for the status panel
+  const latest = useMemo(() => {
+    const sorted = [...localBackups].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    return sorted.find((b) => !b.isPreRestoreSnapshot) || null;
+  }, [localBackups]);
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  };
+  const latestAge = latest ? daysSince(latest.createdAt) : null;
+  const isStale = latestAge === null || latestAge > 7;
+  const totalSize = localBackups.reduce((sum, b) => sum + b.fileSize, 0);
+  const folderLabel = selectedDestination || 'Default folder in the app data directory';
+
+  const tabCls = (active: boolean) =>
+    `pb-2.5 text-[13px] font-medium border-b-2 -mb-px transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded-sm ${
+      active
+        ? 'border-[#0F766E] text-[#0F766E]'
+        : 'border-transparent text-[#64748B] hover:text-[#1F2937]'
+    }`;
+
+  const th = 'px-3 py-2.5 text-left font-semibold border-r border-[#E2E8F0] last:border-r-0';
+  const td = 'px-3 py-2.5 border-r border-[#E2E8F0] last:border-r-0';
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-          <HardDrive className="w-5 h-5 text-brand-600" />
-          Database Backup
-        </h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Create and manage verified database backups to safeguard clinical records.
+    <div className="max-w-[1200px] text-[#1F2937]">
+      {/* Page header */}
+      <div className="mb-4">
+        <h1 className="text-lg font-semibold leading-6">Backup and recovery</h1>
+        <p className="text-[13px] text-[#64748B] mt-0.5">
+          Save a copy of all patient records, results, invoices and settings.
         </p>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-slate-200">
-        <div className="flex gap-6">
-          <button
-            onClick={() => setActiveTab('backup')}
-            className={`pb-3 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'backup'
-                ? 'border-brand-600 text-brand-600'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <FolderUp className="w-4 h-4" />
-            Create Backup
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('archives');
-              fetchLocalBackups();
-            }}
-            className={`pb-3 text-xs font-semibold border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'archives'
-                ? 'border-brand-600 text-brand-600'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Archive className="w-4 h-4" />
-            Backup History ({localBackups.length})
-          </button>
-        </div>
+      <div className="flex items-center gap-6 border-b border-[#E2E8F0] mb-5" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'backup'}
+          onClick={() => setActiveTab('backup')}
+          className={tabCls(activeTab === 'backup')}
+        >
+          Create backup
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'archives'}
+          onClick={() => {
+            setActiveTab('archives');
+            fetchLocalBackups();
+          }}
+          className={tabCls(activeTab === 'archives')}
+        >
+          History ({localBackups.length})
+        </button>
       </div>
 
-      {/* ============================================================== */}
-      {/* TAB 1: CREATE BACKUP                                           */}
-      {/* ============================================================== */}
+      {/* =========================== CREATE =========================== */}
       {activeTab === 'backup' && (
-        <div className="space-y-6">
-          {backupError && <Alert type="error">{backupError}</Alert>}
-          {purgeSuccessMessage && <Alert type="info">{purgeSuccessMessage}</Alert>}
-
-          <Card className="p-6 bg-white border-slate-200 shadow-sm space-y-6">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">Create Complete Database Backup</h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Generates a verified backup of all patient records, test results, invoices, and system settings.
-              </p>
+        <>
+          {(backupError || purgeMessage) && (
+            <div className="mb-4 space-y-2">
+              {backupError && <Alert type="error">{backupError}</Alert>}
+              {purgeMessage && <Alert type={purgeMessage.type}>{purgeMessage.text}</Alert>}
             </div>
+          )}
 
-            {/* Destination Selection */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-700 block">
-                Backup Destination Folder
-              </label>
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
+            <div className="bg-white border border-[#E2E8F0] rounded-lg overflow-hidden">
+              {/* Folder */}
+              <section className="px-6 py-5 border-b border-[#E2E8F0]">
+                <h2 className="text-sm font-semibold">Backup folder</h2>
+                <p className="text-[13px] text-[#64748B] mt-0.5">
+                  New backups are saved here. Your choice is remembered.
+                </p>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                <div className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-mono text-slate-700 truncate select-all">
-                  {selectedDestination || 'Default Local Storage (Computer AppData Backups Folder)'}
+                <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                  <div
+                    className="flex-1 min-w-0 h-9 px-3 flex items-center rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-mono text-[#1F2937]"
+                    title={folderLabel}
+                  >
+                    <span className="truncate">{folderLabel}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSelectDestination}
+                    className="shrink-0"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
+                    Change folder
+                  </Button>
+                </div>
+              </section>
+
+              {/* Create */}
+              <section className="px-6 py-5">
+                <h2 className="text-sm font-semibold">New backup</h2>
+                <p className="text-[13px] text-[#64748B] mt-0.5">
+                  The file name includes the date and time, so no backup overwrites another. Each
+                  backup is checked after it is written.
+                </p>
+
+                <div className="mt-4">
+                  <Button
+                    variant="primary"
+                    onClick={handleCreateBackup}
+                    isLoading={isCreatingBackup}
+                    disabled={isCreatingBackup}
+                    className="bg-[#0F766E] hover:bg-[#115E59]"
+                  >
+                    <Archive className="w-4 h-4 mr-2" />
+                    {isCreatingBackup ? 'Creating backup…' : 'Create backup now'}
+                  </Button>
                 </div>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleSelectDestination}
-                  className="text-xs shrink-0 py-2.5"
-                >
-                  <FolderOpen className="w-4 h-4 mr-1.5 text-brand-600" />
-                  Choose Folder
-                </Button>
+                {backupResult && (
+                  <div className="mt-5 border border-[#E2E8F0] rounded-lg">
+                    <div className="px-4 py-2.5 border-b border-[#E2E8F0] text-[13px] font-semibold text-[#15803D]">
+                      Backup created and verified
+                    </div>
+                    <dl className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                      <Detail label="File name" mono>
+                        {backupResult.fileName}
+                      </Detail>
+                      <Detail label="Size">{formatFileSize(backupResult.fileSize)}</Detail>
+                      <div className="sm:col-span-2">
+                        <Detail label="Saved to" mono>
+                          {backupResult.filePath}
+                        </Detail>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Detail label="Checksum (SHA-256)" mono>
+                          {backupResult.checksum}
+                        </Detail>
+                      </div>
+                    </dl>
+                  </div>
+                )}
+              </section>
+            </div>
+
+            {/* Status */}
+            <aside className="bg-white border border-[#E2E8F0] rounded-lg xl:sticky xl:top-4">
+              <div className="px-5 py-3 border-b border-[#E2E8F0]">
+                <h2 className="text-sm font-semibold">Backup status</h2>
               </div>
-
-              <p className="text-[11px] text-slate-400">
-                Selected folder is automatically remembered for all future backups.
-              </p>
-            </div>
-
-            {/* Action Row */}
-            <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-3">
-              <Button
-                variant="primary"
-                onClick={handleCreateBackup}
-                isLoading={isCreatingBackup}
-                disabled={isCreatingBackup}
-                className="bg-brand-600 hover:bg-brand-700 text-xs px-6 py-2.5 font-bold shadow-sm"
-              >
-                <Archive className="w-4 h-4 mr-2" />
-                {isCreatingBackup ? 'Creating Backup...' : 'Create Backup Now'}
-              </Button>
-
-              <span className="text-xs text-slate-400">
-                Timestamped with exact second for unique tracking.
-              </span>
-            </div>
-
-            {/* Success Details Card */}
-            {backupResult && (
-              <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-3 text-xs">
-                <div className="flex items-center gap-2 text-emerald-900 font-bold">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Backup Created and Verified Successfully</span>
+              <div className="px-5 py-4 space-y-4">
+                <div>
+                  <p className="text-xs text-[#64748B]">Last backup</p>
+                  {latest ? (
+                    <>
+                      <p className="text-[13px] font-medium mt-0.5">
+                        {formatDateTime(latest.createdAt)}
+                      </p>
+                      <p
+                        className={`text-xs mt-0.5 ${
+                          isStale ? 'text-[#D97706] font-medium' : 'text-[#64748B]'
+                        }`}
+                      >
+                        {agoText(latestAge!)}
+                        {isStale && '. Time for a new backup.'}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[13px] font-medium text-[#D97706] mt-0.5">
+                      {isLoadingLocal ? 'Checking…' : 'No backup in this folder yet'}
+                    </p>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-slate-700">
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">Filename</span>
-                    <span className="font-mono font-bold text-slate-900">{backupResult.fileName}</span>
-                  </div>
+                <dl className="grid grid-cols-2 gap-4 pt-4 border-t border-[#E2E8F0]">
+                  <Detail label="Files in folder">{localBackups.length}</Detail>
+                  <Detail label="Space used">{formatFileSize(totalSize)}</Detail>
+                </dl>
 
-                  <div>
-                    <span className="text-slate-500 block text-[11px]">Size</span>
-                    <span className="font-mono font-bold text-slate-900">
-                      {formatFileSize(backupResult.fileSize)}
-                    </span>
-                  </div>
+                <p className="pt-4 border-t border-[#E2E8F0] text-xs text-[#64748B] leading-4">
+                  Keep a second copy on a USB drive or another computer. A backup stored only on
+                  this computer is lost if the computer fails.
+                </p>
 
-                  <div className="sm:col-span-2">
-                    <span className="text-slate-500 block text-[11px]">Full Path</span>
-                    <span className="font-mono text-slate-800 break-all select-all">
-                      {backupResult.filePath}
-                    </span>
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <span className="text-slate-500 block text-[11px]">Digital Verification Hash (SHA-256)</span>
-                    <span className="font-mono text-[11px] text-slate-600 bg-white p-2 rounded-lg border border-emerald-200 block break-all select-all">
-                      {backupResult.checksum}
-                    </span>
-                  </div>
-                </div>
+                {appInfo && (appInfo as any).version && (
+                  <p className="text-xs text-[#64748B]">App version {(appInfo as any).version}</p>
+                )}
               </div>
-            )}
-          </Card>
-        </div>
+            </aside>
+          </div>
+        </>
       )}
 
-      {/* ============================================================== */}
-      {/* TAB 2: BACKUP HISTORY                                          */}
-      {/* ============================================================== */}
+      {/* =========================== HISTORY =========================== */}
       {activeTab === 'archives' && (
-        <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
-          <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">Saved Backup History</h2>
-              <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
-                <span>Active Folder:</span>
-                <span className="font-mono font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 break-all">
-                  {selectedDestination || 'Default Local Storage (AppData)'}
-                </span>
-              </div>
+        <div className="bg-white border border-[#E2E8F0] rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-[#E2E8F0] flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-[#64748B]">Folder</p>
+              <p className="text-xs font-mono truncate max-w-xl" title={folderLabel}>
+                {folderLabel}
+              </p>
             </div>
-
             <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleSelectDestination}
-                className="text-xs"
-              >
-                <FolderOpen className="w-3.5 h-3.5 mr-1" />
-                Change Folder
+              <Button size="sm" variant="outline" onClick={handleSelectDestination}>
+                <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
+                Change folder
               </Button>
-
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => fetchLocalBackups(selectedDestination || undefined)}
                 isLoading={isLoadingLocal}
-                className="text-xs"
               >
-                <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
                 Refresh
               </Button>
             </div>
           </div>
 
+          {listError && (
+            <div className="p-3 border-b border-[#E2E8F0]">
+              <Alert type="error">{listError}</Alert>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                  <th className="py-3 px-4">Backup Filename</th>
-                  <th className="py-3 px-4">Type</th>
-                  <th className="py-3 px-4">Created Date</th>
-                  <th className="py-3 px-4 text-right">File Size</th>
-                  <th className="py-3 px-4 text-right">Status</th>
+            <table className="w-full text-[13px] border-collapse">
+              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                <tr>
+                  <th scope="col" className={th}>File name</th>
+                  <th scope="col" className={th}>Type</th>
+                  <th scope="col" className={th}>Created</th>
+                  <th scope="col" className={`${th} text-right`}>Size</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody>
                 {localBackups.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-400">
-                      <Archive className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                      <p className="font-semibold text-slate-700">No Backups Found in This Folder</p>
-                      <p className="text-slate-400 text-[11px] mt-0.5">
-                        Click "Create Backup" tab to create your first database archive.
+                    <td colSpan={4} className="py-14 text-center">
+                      <p className="font-medium">
+                        {isLoadingLocal ? 'Loading…' : 'No backups in this folder'}
                       </p>
+                      {!isLoadingLocal && (
+                        <p className="text-[#64748B] mt-0.5">
+                          Go to Create backup to save the first one.
+                        </p>
+                      )}
                     </td>
                   </tr>
                 ) : (
                   localBackups.map((b) => (
-                    <tr key={b.fileName} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3 px-4">
-                        <span className="font-mono font-bold text-slate-900 block">{b.fileName}</span>
-                        <span className="text-[10px] text-slate-400 font-mono block truncate max-w-md">
-                          {b.filePath}
-                        </span>
+                    <tr
+                      key={b.fileName}
+                      className="border-b border-[#E2E8F0] last:border-b-0 hover:bg-[#F8FAFC]"
+                    >
+                      <td className={`${td} font-mono text-xs`} title={b.filePath}>
+                        {b.fileName}
                       </td>
-
-                      <td className="py-3 px-4">
+                      <td className={td}>
                         {b.isPreRestoreSnapshot ? (
-                          <Badge variant="warning" className="text-[10px]">
-                            Safety Snapshot
-                          </Badge>
+                          <span title="Saved automatically just before a restore">
+                            Before restore
+                          </span>
                         ) : (
-                          <Badge variant="success" className="text-[10px]">
-                            Standard Backup
-                          </Badge>
+                          'Backup'
                         )}
                       </td>
-
-                      <td className="py-3 px-4 text-slate-600">
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          {formatDateTime(b.createdAt)}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-4 text-right font-mono font-semibold text-slate-800">
+                      <td className={`${td} text-[#64748B]`}>{formatDateTime(b.createdAt)}</td>
+                      <td className={`${td} text-right tabular-nums`}>
                         {formatFileSize(b.fileSize)}
-                      </td>
-
-                      <td className="py-3 px-4 text-right">
-                        <Badge variant="info" className="text-[10px] py-0.5">
-                          Verified
-                        </Badge>
                       </td>
                     </tr>
                   ))
@@ -407,61 +451,53 @@ export const BackupRestoreView: React.FC = () => {
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       )}
 
-      {/* ============================================================== */}
-      {/* CONFIRMATION MODAL: PURGE OLDER BACKUPS                        */}
-      {/* ============================================================== */}
+      {/* =========================== PURGE DIALOG =========================== */}
       {showPurgeModal && backupResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden">
-            <div className="p-6 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                  <Trash2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Delete Older Backups?</h3>
-                  <p className="text-xs text-slate-500">Save disk space and keep your folder organized</p>
-                </div>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1 text-xs">
-                <span className="text-slate-500 block text-[11px]">Latest Fresh Backup:</span>
-                <span className="font-mono font-bold text-slate-900 block truncate">
-                  {backupResult.fileName}
-                </span>
-                <span className="text-slate-500 text-[11px] block">
-                  Size: {formatFileSize(backupResult.fileSize)}
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Since you now have an up-to-date, verified backup, would you like to delete older backup files in this folder?
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delete older backups"
+        >
+          <div className="bg-white rounded-lg border border-[#E2E8F0] w-full max-w-md overflow-hidden">
+            <div className="px-5 py-4">
+              <h3 className="text-base font-semibold">Delete older backups?</h3>
+              <p className="text-[13px] text-[#64748B] mt-1">
+                Your new backup is saved. You can delete the older ones in this folder to free up
+                space. The new backup is kept. This can’t be undone.
               </p>
+
+              <div className="mt-3 px-3 py-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC]">
+                <p className="text-xs font-mono truncate" title={backupResult.fileName}>
+                  {backupResult.fileName}
+                </p>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  {formatFileSize(backupResult.fileSize)}
+                </p>
+              </div>
             </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+            <div className="px-5 py-3 border-t border-[#E2E8F0] flex justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleDismissPurgeModal}
+                onClick={() => setShowPurgeModal(false)}
                 disabled={isPurging}
-                className="text-xs"
+                autoFocus
               >
-                Keep All Backups
+                Keep all
               </Button>
-
               <Button
                 variant="danger"
                 size="sm"
                 onClick={handleConfirmPurge}
                 isLoading={isPurging}
-                className="text-xs bg-rose-600 hover:bg-rose-700 text-white font-semibold"
+                className="bg-[#DC2626] hover:bg-[#B91C1C] text-white"
               >
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                Yes, Delete Older Backups
+                Delete older backups
               </Button>
             </div>
           </div>

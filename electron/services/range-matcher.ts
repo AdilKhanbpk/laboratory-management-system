@@ -116,22 +116,21 @@ export class RangeMatcher {
     demographics: PatientDemographics
   ): EvaluationResult {
     const trimmed = rawValue ? rawValue.trim() : '';
+    const matchedRule = this.findMatchingRange(ranges, demographics);
+    const rangeDisplay = matchedRule?.display_text || (ranges.length > 0 ? ranges[0].display_text : 'Reference range not configured');
 
     if (!trimmed) {
       return {
         flag: 'unconfigured',
         numericValue: null,
         formattedDisplayValue: '',
-        referenceRangeDisplay: 'Reference range not configured',
+        referenceRangeDisplay: rangeDisplay,
         unit,
-        matchedRangeRule: null,
+        matchedRangeRule: matchedRule,
         isValid: false,
-        validationError: 'Value cannot be empty.',
+        validationError: '',
       };
     }
-
-    const matchedRule = this.findMatchingRange(ranges, demographics);
-    const rangeDisplay = matchedRule?.display_text || 'Reference range not configured';
 
     if (parameterType === 'numeric') {
       // Clean possible commas in European decimals or spaces

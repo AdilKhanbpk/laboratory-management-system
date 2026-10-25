@@ -204,8 +204,6 @@ export const TestCatalogView: React.FC = () => {
                   <th scope="col" className={th}>Code</th>
                   <th scope="col" className={th}>Test</th>
                   <th scope="col" className={th}>Category</th>
-                  <th scope="col" className={th}>Specimen and container</th>
-                  <th scope="col" className={th}>Turnaround</th>
                   <th scope="col" className={`${th} text-right`}>Price (PKR)</th>
                   <th scope="col" className={th}>Status</th>
                   <th scope="col" className={`${th} text-right`}>Actions</th>
@@ -229,21 +227,8 @@ export const TestCatalogView: React.FC = () => {
                         )}
                       </td>
                       <td className={`${td} text-[#64748B] whitespace-nowrap`}>{t.category}</td>
-                      <td className={`${td} whitespace-nowrap`}>
-                        {t.sample_type ? (
-                          <>
-                            <span className="block">{t.sample_type}</span>
-                            {t.collection_container && (
-                              <span className="block text-xs text-[#64748B]">{t.collection_container}</span>
-                            )}
-                          </>
-                        ) : (
-                          <span className="text-[#64748B]">–</span>
-                        )}
-                      </td>
-                      <td className={`${td} whitespace-nowrap`}>
-                        {t.turnaround_time || <span className="text-[#64748B]">–</span>}
-                      </td>
+                      
+                     
                       <td className={`${td} text-right tabular-nums whitespace-nowrap font-medium`}>
                         {formatCurrency(t.price_paisa)}
                       </td>

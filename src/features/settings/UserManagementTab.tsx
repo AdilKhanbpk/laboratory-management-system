@@ -1,40 +1,87 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { SafeUser } from '../../types';
-import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-import { Badge } from '../../components/common/Badge';
 import { Alert } from '../../components/common/Alert';
 import { formatDateTime } from '../../lib/utils';
-import {
-  Users,
-  UserPlus,
-  KeyRound,
-  ShieldCheck,
-  CheckCircle2,
-  PowerOff,
-  Edit2,
-  Lock,
-  User,
-  Shield,
-  Check,
-  X,
-} from 'lucide-react';
+import { UserPlus, X } from 'lucide-react';
+
+/*
+ * Same tokens as the rest of the app: primary #0F766E / #115E59, text #1F2937,
+ * muted #64748B, border #E2E8F0, success #15803D, error #DC2626. Radius 8px, no shadows.
+ */
 
 interface UserManagementTabProps {
   currentUser: SafeUser;
 }
 
 const AVAILABLE_MODULES: Array<{ id: string; label: string; description: string }> = [
-  { id: 'new-visit', label: 'New Visit & Bill', description: 'Register walk-in patients, order tests, and collect payment' },
-  { id: 'billing', label: 'Orders & Invoices', description: 'View previous invoices, print receipts, and record pending balances' },
-  { id: 'results', label: 'Specimen & Results', description: 'Accession specimen, enter lab results, review, and finalize reports' },
-  { id: 'doctors', label: 'Referring Doctors', description: 'Add, update, and manage referring physicians directory' },
-  { id: 'tests', label: 'Test Catalog & Ranges', description: 'Configure tests, profile packages, prices, and reference ranges' },
-  { id: 'reports', label: 'Doctor Statistics', description: 'View doctor referral volumes, commissions, and financial metrics' },
-  { id: 'backup', label: 'Backup & Recovery', description: 'Create database snapshots and execute restorations' },
-  { id: 'audit', label: 'Security Audit Log', description: 'Inspect audit trail of staff actions, logins, and billing modifications' },
-  { id: 'settings', label: 'Hospital Settings', description: 'Update laboratory branding, logo, contact headers, and timeouts' },
+  { id: 'new-visit', label: 'New visit and bill', description: 'Register walk-in patients, order tests and collect payment' },
+  { id: 'billing', label: 'Orders and invoices', description: 'View invoices, print receipts and record pending balances' },
+  { id: 'results', label: 'Specimens and results', description: 'Accession specimens, enter results, review and finalize reports' },
+  { id: 'doctors', label: 'Referring doctors', description: 'Add and update the referring doctor directory' },
+  { id: 'tests', label: 'Test catalog and ranges', description: 'Set up tests, packages, prices and reference ranges' },
+  { id: 'reports', label: 'Doctor statistics', description: 'View referral volumes and financial totals by doctor' },
+  { id: 'backup', label: 'Backup and recovery', description: 'Create database backups and restore them' },
+  { id: 'audit', label: 'Audit log', description: 'See staff sign-ins and billing changes' },
+  { id: 'settings', label: 'Settings', description: 'Change laboratory details, logo and screen lock time' },
 ];
+
+const inputCls =
+  'h-9 w-full px-3 rounded-lg border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] placeholder:text-slate-400 focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]';
+
+const linkBtn =
+  'text-[13px] font-medium rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]';
+
+/** Shared dialog frame: title, body, Escape to close. */
+const Modal: React.FC<{
+  title: string;
+  onClose: () => void;
+  widthClass?: string;
+  children: React.ReactNode;
+}> = ({ title, onClose, widthClass = 'max-w-lg', children }) => {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div
+        className={`bg-white rounded-lg border border-[#E2E8F0] w-full ${widthClass} max-h-[92vh] flex flex-col overflow-hidden text-[#1F2937]`}
+      >
+        <div className="px-5 py-3.5 border-b border-[#E2E8F0] flex items-center justify-between shrink-0">
+          <h3 className="text-base font-semibold">{title}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="p-1.5 rounded-lg text-[#64748B] hover:bg-slate-100 hover:text-[#1F2937] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+const FieldLabel: React.FC<{ htmlFor: string; children: React.ReactNode }> = ({
+  htmlFor,
+  children,
+}) => (
+  <label htmlFor={htmlFor} className="block text-[13px] font-medium mb-1">
+    {children}
+  </label>
+);
 
 export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUser }) => {
   const [users, setUsers] = useState<SafeUser[]>([]);
@@ -42,12 +89,10 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Modals
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<SafeUser | null>(null);
   const [passwordTargetUser, setPasswordTargetUser] = useState<SafeUser | null>(null);
 
-  // Form states for Add / Edit
   const [formUsername, setFormUsername] = useState('');
   const [formFullName, setFormFullName] = useState('');
   const [formPassword, setFormPassword] = useState('');
@@ -55,25 +100,24 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
   const [formPermissions, setFormPermissions] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Password change state
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
 
   const isAdmin = currentUser.role === 'admin';
+  const anyModalOpen = isAddOpen || !!editingUser || !!passwordTargetUser;
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
-    setErrorMsg(null);
     try {
       const res = await window.electronAPI.users.list();
       if (res.success && res.data) {
         setUsers(res.data);
       } else {
-        setErrorMsg(res.error || 'Failed to retrieve users list.');
+        setErrorMsg(res.error || 'Could not load the user list.');
       }
     } catch {
-      setErrorMsg('Error communicating with authentication service.');
+      setErrorMsg('Could not reach the sign-in service.');
     } finally {
       setIsLoading(false);
     }
@@ -116,11 +160,11 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
   const handleSubmitAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formUsername.trim() || !formFullName.trim() || !formPassword) {
-      setErrorMsg('Please fill in all required fields.');
+      setErrorMsg('Fill in the name, username and password.');
       return;
     }
     if (formPassword.length < 6) {
-      setErrorMsg('Password must be at least 6 characters.');
+      setErrorMsg('The password must be at least 6 characters.');
       return;
     }
 
@@ -137,14 +181,14 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
       });
 
       if (res.success) {
-        setSuccessMsg(`User account '${formUsername}' created successfully.`);
+        setSuccessMsg(`Account “${formUsername.trim().toLowerCase()}” created.`);
         setIsAddOpen(false);
         fetchUsers();
       } else {
-        setErrorMsg(res.error || 'Failed to create user account.');
+        setErrorMsg(res.error || 'Could not create the account.');
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Error occurred while saving new user.');
+      setErrorMsg(err?.message || 'Something went wrong while creating the account.');
     } finally {
       setIsSubmitting(false);
     }
@@ -154,7 +198,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
     e.preventDefault();
     if (!editingUser) return;
     if (!formFullName.trim()) {
-      setErrorMsg('Full name cannot be blank.');
+      setErrorMsg('The full name can’t be empty.');
       return;
     }
 
@@ -170,14 +214,14 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
       });
 
       if (res.success) {
-        setSuccessMsg(`User '${editingUser.username}' updated successfully.`);
+        setSuccessMsg(`Account “${editingUser.username}” updated.`);
         setEditingUser(null);
         fetchUsers();
       } else {
-        setErrorMsg(res.error || 'Failed to update user profile.');
+        setErrorMsg(res.error || 'Could not update the account.');
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Error occurred while updating user.');
+      setErrorMsg(err?.message || 'Something went wrong while updating the account.');
     } finally {
       setIsSubmitting(false);
     }
@@ -186,21 +230,23 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
   const handleToggleActive = async (user: SafeUser) => {
     const nextStatus = user.is_active !== 1;
     const confirmText = nextStatus
-      ? `Reactivate account '${user.username}'?`
-      : `Deactivate account '${user.username}'? The user will be blocked from logging into the workstation.`;
+      ? `Turn on account “${user.username}”?`
+      : `Turn off account “${user.username}”? This user will no longer be able to sign in.`;
 
     if (!window.confirm(confirmText)) return;
 
+    setErrorMsg(null);
+    setSuccessMsg(null);
     try {
       const res = await window.electronAPI.users.toggleActive(user.id, nextStatus);
       if (res.success) {
-        setSuccessMsg(`Account '${user.username}' status updated.`);
+        setSuccessMsg(`Account “${user.username}” is now ${nextStatus ? 'active' : 'disabled'}.`);
         fetchUsers();
       } else {
-        setErrorMsg(res.error || 'Failed to change user status.');
+        setErrorMsg(res.error || 'Could not change the account status.');
       }
     } catch {
-      setErrorMsg('Error updating user status.');
+      setErrorMsg('Something went wrong while changing the account status.');
     }
   };
 
@@ -216,11 +262,11 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
     e.preventDefault();
     if (!passwordTargetUser) return;
     if (!newPassword || newPassword.length < 6) {
-      setErrorMsg('New password must be at least 6 characters.');
+      setErrorMsg('The new password must be at least 6 characters.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      setErrorMsg('Passwords do not match. Please retype carefully.');
+      setErrorMsg('The two passwords don’t match.');
       return;
     }
 
@@ -233,489 +279,389 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
       });
 
       if (res.success) {
-        setSuccessMsg(`Password for user '${passwordTargetUser.username}' updated successfully.`);
+        setSuccessMsg(`Password changed for “${passwordTargetUser.username}”.`);
         setPasswordTargetUser(null);
       } else {
-        setErrorMsg(res.error || 'Failed to update password.');
+        setErrorMsg(res.error || 'Could not change the password.');
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Error updating password.');
+      setErrorMsg(err?.message || 'Something went wrong while changing the password.');
     } finally {
       setPasswordSubmitting(false);
     }
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Messages */}
-      {successMsg && (
-        <Alert type="success" title="Success">
-          {successMsg}
-        </Alert>
-      )}
-      {errorMsg && (
-        <Alert type="error" title="Notice">
-          {errorMsg}
-        </Alert>
-      )}
+  const closeModals = () => {
+    setIsAddOpen(false);
+    setEditingUser(null);
+    setPasswordTargetUser(null);
+    setErrorMsg(null);
+  };
 
-      {/* Header Card */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+  /** Role select and module checklist, used by both Add and Edit. */
+  const accessFields = (
+    <>
+      <div>
+        <FieldLabel htmlFor="user-role">Role</FieldLabel>
+        <select
+          id="user-role"
+          value={formRole}
+          onChange={(e) => setFormRole(e.target.value as 'admin' | 'operator')}
+          className={inputCls}
+        >
+          <option value="operator">Staff (choose which modules)</option>
+          <option value="admin">Administrator (everything)</option>
+        </select>
+      </div>
+
+      {formRole === 'operator' ? (
+        <fieldset>
+          <div className="flex items-baseline justify-between mb-1">
+            <legend className="text-[13px] font-medium">Modules this user can open</legend>
+            <span className="text-[13px]">
+              <button
+                type="button"
+                className={`${linkBtn} text-[#0F766E] hover:text-[#115E59]`}
+                onClick={() => setFormPermissions(AVAILABLE_MODULES.map((m) => m.id))}
+              >
+                Select all
+              </button>
+              <span className="text-[#CBD5E1] mx-2">|</span>
+              <button
+                type="button"
+                className={`${linkBtn} text-[#0F766E] hover:text-[#115E59]`}
+                onClick={() => setFormPermissions([])}
+              >
+                Clear
+              </button>
+            </span>
+          </div>
+          <div className="border border-[#E2E8F0] rounded-lg divide-y divide-[#E2E8F0] max-h-56 overflow-y-auto">
+            {AVAILABLE_MODULES.map((m) => (
+              <label
+                key={m.id}
+                className="flex items-start gap-3 px-3 py-2 cursor-pointer hover:bg-[#F8FAFC]"
+              >
+                <input
+                  type="checkbox"
+                  checked={formPermissions.includes(m.id)}
+                  onChange={() => handleToggleModule(m.id)}
+                  className="mt-0.5 h-4 w-4 rounded border-[#CBD5E1] accent-[#0F766E]"
+                />
+                <span>
+                  <span className="block text-[13px] font-medium leading-5">{m.label}</span>
+                  <span className="block text-xs text-[#64748B] leading-4">{m.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : (
+        <p className="text-[13px] text-[#64748B]">
+          Administrators can open every module, including settings and user accounts.
+        </p>
+      )}
+    </>
+  );
+
+  const modalFooter = (
+    submitLabel: string,
+    loading: boolean
+  ) => (
+    <div className="px-5 py-3 border-t border-[#E2E8F0] flex justify-end gap-2 shrink-0">
+      <Button type="button" variant="outline" size="sm" onClick={closeModals} disabled={loading}>
+        Cancel
+      </Button>
+      <Button
+        type="submit"
+        size="sm"
+        isLoading={loading}
+        className="bg-[#0F766E] hover:bg-[#115E59]"
+      >
+        {submitLabel}
+      </Button>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4 text-[#1F2937]">
+      {/* Messages (errors show inside an open dialog instead) */}
+      {successMsg && <Alert type="success">{successMsg}</Alert>}
+      {errorMsg && !anyModalOpen && <Alert type="error">{errorMsg}</Alert>}
+
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <Users className="w-5 h-5 text-brand-600" />
-            User Accounts & Role-Based Access Control
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Create operator accounts, configure module access permissions, reset passwords, and audit login activity.
+          <h2 className="text-base font-semibold">Users and access</h2>
+          <p className="text-[13px] text-[#64748B] mt-0.5">
+            Who can sign in to this workstation and which modules they can open.
           </p>
         </div>
-
         {isAdmin && (
-          <Button size="sm" onClick={handleOpenAdd}>
+          <Button size="sm" onClick={handleOpenAdd} className="bg-[#0F766E] hover:bg-[#115E59]">
             <UserPlus className="w-4 h-4 mr-1.5" />
-            Add New User
+            Add user
           </Button>
         )}
       </div>
 
-      {/* Users List Table */}
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider bg-slate-50/50">
-                <th className="py-3 px-4">Operator Name</th>
-                <th className="py-3 px-4">Username</th>
-                <th className="py-3 px-4">Role</th>
-                <th className="py-3 px-4">Module Permissions</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Last Login</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+      {/* Users table */}
+      <div className="bg-white border border-[#E2E8F0] rounded-lg overflow-x-auto">
+        <table className="w-full text-[13px] border-collapse">
+          <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+            <tr className="text-left font-semibold">
+              {['Name', 'Role', 'Modules', 'Status', 'Last sign-in', ''].map((h, i) => (
+                <th
+                  key={h || 'actions'}
+                  scope="col"
+                  className={`px-3 py-2.5 border-r border-[#E2E8F0] last:border-r-0 ${
+                    i === 5 ? 'text-right' : ''
+                  }`}
+                >
+                  {h || <span className="sr-only">Actions</span>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && users.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-[#64748B]">
+                  Loading users…
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {users.map((u) => {
+            ) : users.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-[#64748B]">
+                  No users yet.
+                </td>
+              </tr>
+            ) : (
+              users.map((u) => {
                 const isSelf = u.id === currentUser.id;
-                const permissionsList =
-                  u.role === 'admin' || !u.permissions || u.permissions === 'all'
-                    ? ['All Modules']
-                    : u.permissions.split(',').map((p) => p.trim());
+                const isDisabled = u.is_active !== 1;
+                const isFullAccess =
+                  u.role === 'admin' || !u.permissions || u.permissions === 'all';
+                const moduleLabels = isFullAccess
+                  ? []
+                  : u.permissions!
+                      .split(',')
+                      .map((p) => p.trim())
+                      .map((p) => AVAILABLE_MODULES.find((m) => m.id === p)?.label || p);
+
+                const cell =
+                  'px-3 py-2.5 align-top border-r border-[#E2E8F0] last:border-r-0';
 
                 return (
                   <tr
                     key={u.id}
-                    className={`hover:bg-slate-50/80 transition-colors ${
-                      u.is_active === 0 ? 'opacity-50 bg-slate-50/50' : ''
+                    className={`border-b border-[#E2E8F0] last:border-b-0 hover:bg-[#F8FAFC] ${
+                      isDisabled ? 'text-[#64748B]' : ''
                     }`}
                   >
-                    <td className="py-3 px-4 font-semibold text-slate-900 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 font-bold text-xs shrink-0">
-                          {u.full_name.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <span>{u.full_name}</span>
-                          {isSelf && (
-                            <span className="ml-1.5 px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded text-[10px] font-bold">
-                              You
+                    <td className={cell}>
+                      <div className="font-medium">
+                        {u.full_name}
+                        {isSelf && (
+                          <span className="ml-2 text-xs font-normal text-[#0F766E]">You</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-[#64748B]">{u.username}</div>
+                    </td>
+
+                    <td className={cell}>{u.role === 'admin' ? 'Administrator' : 'Staff'}</td>
+
+                    <td className={cell}>
+                      {isFullAccess ? (
+                        'All modules'
+                      ) : moduleLabels.length === 0 ? (
+                        <span className="text-[#64748B]">None</span>
+                      ) : (
+                        <span title={moduleLabels.join(', ')}>
+                          {moduleLabels.slice(0, 2).join(', ')}
+                          {moduleLabels.length > 2 && (
+                            <span className="text-[#64748B]">
+                              {' '}
+                              +{moduleLabels.length - 2} more
                             </span>
                           )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 font-mono font-medium text-slate-700 whitespace-nowrap">
-                      @{u.username}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      {u.role === 'admin' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                          <ShieldCheck className="w-3 h-3 text-amber-600" />
-                          Administrator
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                          <User className="w-3 h-3 text-slate-500" />
-                          Operator / Staff
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="flex flex-wrap gap-1 max-w-xs">
-                        {permissionsList.map((p) => (
-                          <span
-                            key={p}
-                            className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-medium border border-slate-200"
-                          >
-                            {p === 'All Modules'
-                              ? 'Full System Access'
-                              : AVAILABLE_MODULES.find((m) => m.id === p)?.label || p}
-                          </span>
-                        ))}
-                      </div>
+
+                    <td className={cell}>
+                      <span className={isDisabled ? '' : 'text-[#15803D]'}>
+                        {isDisabled ? 'Disabled' : 'Active'}
+                      </span>
                     </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      {u.is_active === 1 ? (
-                        <Badge variant="success">Active</Badge>
-                      ) : (
-                        <Badge variant="default" className="text-slate-400 bg-slate-100">
-                          Disabled
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 whitespace-nowrap text-[11px]">
+
+                    <td className={`${cell} text-[#64748B] whitespace-nowrap`}>
                       {u.last_login_at ? formatDateTime(u.last_login_at) : 'Never'}
                     </td>
-                    <td className="py-3 px-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {/* Change Password (available to admin or self) */}
-                        {(isAdmin || isSelf) && (
-                          <button
-                            onClick={() => handleOpenPasswordModal(u)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                            title="Update Password"
-                          >
-                            <KeyRound className="w-4 h-4" />
-                          </button>
-                        )}
 
-                        {/* Edit Permissions (admin only) */}
+                    <td className={`${cell} text-right whitespace-nowrap`}>
+                      <div className="flex items-center justify-end gap-4">
                         {isAdmin && (
                           <button
+                            type="button"
                             onClick={() => handleOpenEdit(u)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                            title="Edit Permissions & Role"
+                            className={`${linkBtn} text-[#0F766E] hover:text-[#115E59]`}
                           >
-                            <Edit2 className="w-4 h-4" />
+                            Edit
                           </button>
                         )}
-
-                        {/* Toggle Active (admin only, cannot deactivate self) */}
+                        {(isAdmin || isSelf) && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPasswordModal(u)}
+                            className={`${linkBtn} text-[#0F766E] hover:text-[#115E59]`}
+                          >
+                            Password
+                          </button>
+                        )}
                         {isAdmin && !isSelf && (
                           <button
+                            type="button"
                             onClick={() => handleToggleActive(u)}
-                            className={`p-1.5 rounded-lg transition-colors ${
-                              u.is_active === 1
-                                ? 'text-slate-400 hover:text-red-600 hover:bg-red-50'
-                                : 'text-emerald-600 hover:bg-emerald-50'
+                            className={`${linkBtn} ${
+                              isDisabled
+                                ? 'text-[#0F766E] hover:text-[#115E59]'
+                                : 'text-[#DC2626] hover:text-[#B91C1C]'
                             }`}
-                            title={u.is_active === 1 ? 'Disable Account' : 'Enable Account'}
                           >
-                            {u.is_active === 1 ? (
-                              <PowerOff className="w-4 h-4" />
-                            ) : (
-                              <CheckCircle2 className="w-4 h-4" />
-                            )}
+                            {isDisabled ? 'Enable' : 'Disable'}
                           </button>
                         )}
                       </div>
                     </td>
                   </tr>
                 );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      {/* ============================================================== */}
-      {/* MODAL: ADD NEW USER                                            */}
-      {/* ============================================================== */}
+      {/* Add user */}
       {isAddOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <UserPlus className="w-4 h-4 text-brand-600" />
-                Register New System Operator
-              </h3>
-              <button
-                onClick={() => setIsAddOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <Modal title="Add user" onClose={closeModals}>
+          <form onSubmit={handleSubmitAdd} className="flex flex-col min-h-0" noValidate>
+            <div className="px-5 py-4 space-y-4 overflow-y-auto">
+              {errorMsg && <Alert type="error">{errorMsg}</Alert>}
 
-            <form onSubmit={handleSubmitAdd} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Full Name <span className="text-red-500">*</span>
-                </label>
+                <FieldLabel htmlFor="new-fullname">Full name</FieldLabel>
                 <input
+                  id="new-fullname"
                   type="text"
-                  required
-                  placeholder="e.g. Muhammad Ali"
+                  autoFocus
+                  placeholder="Muhammad Ali"
                   value={formFullName}
                   onChange={(e) => setFormFullName(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                  className={inputCls}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Username <span className="text-red-500">*</span>
-                  </label>
+                  <FieldLabel htmlFor="new-username">Username</FieldLabel>
                   <input
+                    id="new-username"
                     type="text"
-                    required
-                    placeholder="e.g. ali_reception"
+                    autoComplete="off"
+                    placeholder="ali.reception"
                     value={formUsername}
                     onChange={(e) => setFormUsername(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-400 font-mono"
+                    className={inputCls}
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Initial Password <span className="text-red-500">*</span>
-                  </label>
+                  <FieldLabel htmlFor="new-password">Password</FieldLabel>
                   <input
+                    id="new-password"
                     type="password"
-                    required
-                    placeholder="Min 6 characters"
+                    autoComplete="new-password"
+                    placeholder="At least 6 characters"
                     value={formPassword}
                     onChange={(e) => setFormPassword(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                    className={inputCls}
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Account Role <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formRole}
-                  onChange={(e) => setFormRole(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
-                >
-                  <option value="operator">Operator / Staff (Custom Allowed Modules)</option>
-                  <option value="admin">Administrator (Full Unrestricted Access)</option>
-                </select>
-              </div>
-
-              {formRole === 'operator' && (
-                <div className="pt-2 border-t border-slate-100">
-                  <label className="block text-xs font-bold text-slate-800 mb-2">
-                    Allowed System Modules:
-                  </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                    {AVAILABLE_MODULES.map((m) => {
-                      const isChecked = formPermissions.includes(m.id);
-                      return (
-                        <label
-                          key={m.id}
-                          className={`flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${
-                            isChecked
-                              ? 'bg-brand-50/50 border-brand-300 text-slate-900'
-                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => handleToggleModule(m.id)}
-                            className="mt-0.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                          />
-                          <div>
-                            <span className="text-xs font-semibold block">{m.label}</span>
-                            <span className="text-[10px] text-slate-500 block leading-tight">
-                              {m.description}
-                            </span>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsAddOpen(false)}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" size="sm" isLoading={isSubmitting}>
-                  Create Operator Account
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+              {accessFields}
+            </div>
+            {modalFooter('Create account', isSubmitting)}
+          </form>
+        </Modal>
       )}
 
-      {/* ============================================================== */}
-      {/* MODAL: EDIT USER & PERMISSIONS                                 */}
-      {/* ============================================================== */}
+      {/* Edit user */}
       {editingUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Edit2 className="w-4 h-4 text-brand-600" />
-                Edit Access Permissions: @{editingUser.username}
-              </h3>
-              <button
-                onClick={() => setEditingUser(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <Modal title={`Edit ${editingUser.username}`} onClose={closeModals}>
+          <form onSubmit={handleSubmitEdit} className="flex flex-col min-h-0" noValidate>
+            <div className="px-5 py-4 space-y-4 overflow-y-auto">
+              {errorMsg && <Alert type="error">{errorMsg}</Alert>}
 
-            <form onSubmit={handleSubmitEdit} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+                <FieldLabel htmlFor="edit-fullname">Full name</FieldLabel>
                 <input
+                  id="edit-fullname"
                   type="text"
-                  required
+                  autoFocus
                   value={formFullName}
                   onChange={(e) => setFormFullName(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                  className={inputCls}
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Role</label>
-                <select
-                  value={formRole}
-                  onChange={(e) => setFormRole(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
-                >
-                  <option value="operator">Operator / Staff (Custom Allowed Modules)</option>
-                  <option value="admin">Administrator (Full Unrestricted Access)</option>
-                </select>
-              </div>
-
-              {formRole === 'operator' && (
-                <div className="pt-2 border-t border-slate-100">
-                  <label className="block text-xs font-bold text-slate-800 mb-2">
-                    Allowed System Modules:
-                  </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                    {AVAILABLE_MODULES.map((m) => {
-                      const isChecked = formPermissions.includes(m.id);
-                      return (
-                        <label
-                          key={m.id}
-                          className={`flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${
-                            isChecked
-                              ? 'bg-brand-50/50 border-brand-300 text-slate-900'
-                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => handleToggleModule(m.id)}
-                            className="mt-0.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                          />
-                          <div>
-                            <span className="text-xs font-semibold block">{m.label}</span>
-                            <span className="text-[10px] text-slate-500 block leading-tight">
-                              {m.description}
-                            </span>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setEditingUser(null)}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" size="sm" isLoading={isSubmitting}>
-                  Save Changes
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+              {accessFields}
+            </div>
+            {modalFooter('Save changes', isSubmitting)}
+          </form>
+        </Modal>
       )}
 
-      {/* ============================================================== */}
-      {/* MODAL: CHANGE PASSWORD                                         */}
-      {/* ============================================================== */}
+      {/* Change password */}
       {passwordTargetUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Lock className="w-4 h-4 text-amber-600" />
-                Change Password: @{passwordTargetUser.username}
-              </h3>
-              <button
-                onClick={() => setPasswordTargetUser(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <Modal
+          title={`Change password for ${passwordTargetUser.username}`}
+          onClose={closeModals}
+          widthClass="max-w-sm"
+        >
+          <form onSubmit={handleSubmitPasswordChange} className="flex flex-col min-h-0" noValidate>
+            <div className="px-5 py-4 space-y-4">
+              {errorMsg && <Alert type="error">{errorMsg}</Alert>}
 
-            <form onSubmit={handleSubmitPasswordChange} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  New Password <span className="text-red-500">*</span>
-                </label>
+                <FieldLabel htmlFor="pw-new">New password</FieldLabel>
                 <input
+                  id="pw-new"
                   type="password"
-                  required
+                  autoFocus
+                  autoComplete="new-password"
                   placeholder="At least 6 characters"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                  className={inputCls}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Confirm Password <span className="text-red-500">*</span>
-                </label>
+                <FieldLabel htmlFor="pw-confirm">Confirm new password</FieldLabel>
                 <input
+                  id="pw-confirm"
                   type="password"
-                  required
-                  placeholder="Repeat new password"
+                  autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                  className={inputCls}
                 />
               </div>
-
-              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPasswordTargetUser(null)}
-                  disabled={passwordSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" size="sm" isLoading={passwordSubmitting}>
-                  Update Password
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+            </div>
+            {modalFooter('Change password', passwordSubmitting)}
+          </form>
+        </Modal>
       )}
     </div>
   );
 };
-

@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { FullDiagnosticReport } from '../../types';
 import { Button } from '../../components/common/Button';
-import { formatDateTime } from '../../lib/utils';
-import { Printer, Download, X, FileText, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Alert } from '../../components/common/Alert';
+import { formatDateTime, calculateAge } from '../../lib/utils';
+import { Printer, Download, X } from 'lucide-react';
+
+/*
+ * Screen chrome uses the app tokens (teal #0F766E, border #E2E8F0, text #1F2937).
+ * The report sheet itself is black on white with thin rules, so it prints cleanly
+ * on any A4 printer, colour or not.
+ */
 
 interface LabReportPreviewModalProps {
   visitId: number | null;
@@ -10,6 +17,18 @@ interface LabReportPreviewModalProps {
   onClose: () => void;
   onOpenAmendment?: (resultId: number) => void;
 }
+
+/** One label/value line in the patient block. */
+const InfoRow: React.FC<{ label: string; children: React.ReactNode; mono?: boolean }> = ({
+  label,
+  children,
+  mono,
+}) => (
+  <div className="grid grid-cols-[104px_1fr] gap-2 py-[3px]">
+    <dt className="text-slate-600">{label}</dt>
+    <dd className={`font-medium text-black ${mono ? 'tabular-nums' : ''}`}>{children}</dd>
+  </div>
+);
 
 export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
   visitId,
@@ -19,38 +38,64 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
 }) => {
   const [reportData, setReportData] = useState<FullDiagnosticReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportStatus, setExportStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(
+    null
+  );
 
   useEffect(() => {
     if (!isOpen || !visitId) {
       setReportData(null);
-      setExportMessage(null);
+      setExportStatus(null);
+      setLoadError(null);
       return;
     }
 
+    let cancelled = false;
     setIsLoading(true);
+    setLoadError(null);
     window.electronAPI.reports
       .getDiagnosticReport(visitId)
       .then((res) => {
+        if (cancelled) return;
         if (res.success && res.data) {
           setReportData(res.data);
+        } else {
+          setLoadError(res.error || 'The report could not be loaded.');
         }
       })
-      .catch((err) => console.error('Failed to load report:', err))
-      .finally(() => setIsLoading(false));
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('Failed to load report:', err);
+        setLoadError(err?.message || 'The report could not be loaded.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, visitId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => window.print();
 
   const handleExportPdf = async () => {
     if (!visitId || !reportData) return;
     setIsExportingPdf(true);
-    setExportMessage(null);
+    setExportStatus(null);
     try {
       const fileName = `Report_${reportData.patient.patient_mrn}_${reportData.visit.visit_number}.pdf`;
       const res = await window.electronAPI.reports.exportPdf({
@@ -59,238 +104,247 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
       });
 
       if (res.success && res.data?.filePath) {
-        setExportMessage(`Report PDF saved successfully to:\n${res.data.filePath}`);
+        setExportStatus({ type: 'success', text: `PDF saved to ${res.data.filePath}` });
+      } else if (!res.success) {
+        setExportStatus({ type: 'error', text: res.error || 'The PDF could not be saved.' });
       }
+      // success without a path means the person cancelled the save dialog: say nothing
     } catch (err: any) {
-      setExportMessage(`PDF export error: ${err?.message || 'Failed to save PDF'}`);
+      setExportStatus({ type: 'error', text: err?.message || 'The PDF could not be saved.' });
     } finally {
       setIsExportingPdf(false);
     }
   };
 
+  const hospital = reportData?.hospital;
+  const phones = [hospital?.phone_primary, hospital?.phone_secondary].filter(Boolean).join(' / ');
+  const ageInfo = reportData?.patient.date_of_birth
+    ? calculateAge(reportData.patient.date_of_birth)
+    : null;
+  const snapshot = reportData?.snapshot;
+  const showAmendColumn = !!onOpenAmendment && !!snapshot;
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full overflow-hidden flex flex-col my-auto max-h-[94vh] print:max-h-none print:shadow-none print:border-none print:w-full print:max-w-none">
-        {/* Modal Top Bar - Hidden in Print */}
-        <div className="px-6 py-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0 print:hidden">
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-brand-400" />
-            <div>
-              <h2 className="text-sm font-bold">Diagnostic Pathology Report Preview</h2>
-              {reportData?.snapshot && (
-                <p className="text-[11px] text-slate-400 font-mono">
-                  Report #{reportData.snapshot.report_number} • Rev {reportData.snapshot.version}
-                </p>
-              )}
-            </div>
+    <div
+      className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 print:p-0 print:bg-white print:static print:block"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Laboratory report"
+    >
+      <style>{`@media print { @page { size: A4; margin: 12mm; } }`}</style>
+
+      <div className="bg-white rounded-lg border border-[#E2E8F0] w-full max-w-4xl max-h-[94vh] flex flex-col overflow-hidden text-[#1F2937] print:max-h-none print:border-0 print:rounded-none print:max-w-none print:overflow-visible">
+        {/* Controls (not printed) */}
+        <div className="px-5 py-3 border-b border-[#E2E8F0] flex items-center justify-between gap-4 shrink-0 print:hidden">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold leading-6">Laboratory report</h2>
+            {snapshot && (
+              <p className="text-[13px] text-[#64748B]">
+                {snapshot.report_number} · Revision {snapshot.version}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
             <Button
               size="sm"
               variant="outline"
-              className="text-slate-200 border-slate-700 hover:bg-slate-800 text-xs"
               onClick={handleExportPdf}
               isLoading={isExportingPdf}
+              disabled={!reportData}
             >
               <Download className="w-3.5 h-3.5 mr-1.5" />
-              Export Local PDF
+              Save as PDF
             </Button>
-            <Button size="sm" variant="primary" onClick={handlePrint} className="text-xs">
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={handlePrint}
+              disabled={!reportData}
+              className="bg-[#0F766E] hover:bg-[#115E59]"
+            >
               <Printer className="w-3.5 h-3.5 mr-1.5" />
-              Print Report (A4)
+              Print
             </Button>
             <button
+              type="button"
               onClick={onClose}
-              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              aria-label="Close"
+              className="p-1.5 rounded-lg text-[#64748B] hover:bg-slate-100 hover:text-[#1F2937] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {exportMessage && (
-          <div className="px-6 py-2 bg-emerald-50 text-emerald-900 border-b border-emerald-200 text-xs font-medium flex items-center justify-between print:hidden">
-            <span className="whitespace-pre-line">{exportMessage}</span>
-            <button onClick={() => setExportMessage(null)} className="text-emerald-700 font-bold hover:underline">
-              Dismiss
-            </button>
+        {exportStatus && (
+          <div className="px-5 py-2 border-b border-[#E2E8F0] print:hidden">
+            <Alert type={exportStatus.type}>{exportStatus.text}</Alert>
           </div>
         )}
 
-        {/* Printable A4 Report Body */}
-        <div className="p-8 overflow-y-auto bg-white text-slate-900 text-xs print:p-0 print:overflow-visible">
+        {/* Paper */}
+        <div className="flex-1 overflow-y-auto bg-[#F5F7FA] p-5 print:p-0 print:bg-white print:overflow-visible">
           {isLoading ? (
-            <div className="text-center py-20 text-slate-400">Loading diagnostic report...</div>
+            <div className="text-center py-20 text-[13px] text-[#64748B]">Loading report…</div>
           ) : reportData ? (
-            <div className="max-w-[210mm] mx-auto space-y-6 print:max-w-none">
-              {/* Header */}
-              <div className="border-b-2 border-slate-900 pb-4 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  {reportData.hospital?.logo_url && (
-                    <img
-                      src={reportData.hospital.logo_url}
-                      alt={reportData.hospital.hospital_name}
-                      className="h-16 w-auto object-contain"
-                    />
+            <div className="max-w-[210mm] mx-auto bg-white border border-[#E2E8F0] px-8 py-7 text-[12px] leading-5 text-black print:border-0 print:p-0 print:max-w-none">
+              {/* Letterhead */}
+              <header className="flex items-center gap-4 pb-3 border-b-2 border-[#0F766E] print:border-black">
+                {hospital?.logo_url && (
+                  <img
+                    src={hospital.logo_url}
+                    alt=""
+                    className="h-16 w-auto object-contain shrink-0"
+                  />
+                )}
+                <div className="flex-1 text-center">
+                  <h1 className="text-2xl font-bold leading-7">
+                    {hospital?.hospital_name || 'Diagnostic Laboratory'}
+                  </h1>
+                  {hospital?.tagline && (
+                    <p className="text-[12px] text-slate-600">{hospital.tagline}</p>
                   )}
-                  <div>
-                    <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase">
-                      {reportData.hospital?.hospital_name}
-                    </h1>
-                    {reportData.hospital?.tagline && (
-                      <p className="text-xs text-slate-500 font-medium italic">{reportData.hospital.tagline}</p>
-                    )}
-                    <p className="text-[11px] text-slate-600 mt-0.5">
-                      {reportData.hospital?.address}
-                      {reportData.hospital?.phone_primary && ` • Tel: ${reportData.hospital.phone_primary}`}
-                      {reportData.hospital?.email && ` • ${reportData.hospital.email}`}
+                  {hospital?.address && <p className="text-[12px] mt-0.5">{hospital.address}</p>}
+                  {(phones || hospital?.email) && (
+                    <p className="text-[12px]">
+                      {phones && `Phone: ${phones}`}
+                      {phones && hospital?.email && '   |   '}
+                      {hospital?.email}
                     </p>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <span className="inline-block px-3 py-1 bg-slate-900 text-white font-bold text-xs uppercase tracking-wider rounded">
-                    Official Laboratory Report
-                  </span>
-                  <p className="font-mono text-xs font-bold text-slate-800 mt-1">
-                    {reportData.snapshot?.report_number || `VISIT-${reportData.visit.visit_number}`}
-                  </p>
-                  {reportData.snapshot?.status === 'amended' && (
-                    <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded font-bold text-[10px] uppercase">
-                      Amended Report (Rev {reportData.snapshot.version})
-                    </span>
                   )}
                 </div>
-              </div>
+                {hospital?.logo_url && <div className="w-16 shrink-0" aria-hidden="true" />}
+              </header>
 
-              {/* Patient & Encounter Demographics Box */}
-              <div className="p-3.5 rounded-lg border border-slate-300 bg-slate-50/70 print:bg-white text-[11px] grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <span className="text-slate-500 block">Patient Name:</span>
-                  <span className="font-bold text-slate-900 text-sm">{reportData.patient.full_name}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Patient MRN:</span>
-                  <span className="font-mono font-bold text-slate-800">{reportData.patient.patient_mrn}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Age & Biological Sex:</span>
-                  <span className="font-semibold text-slate-800 capitalize">
-                    {reportData.patient.date_of_birth || 'Age Unspecified'} • {reportData.patient.gender}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Order Date & Time:</span>
-                  <span className="font-medium text-slate-800">{formatDateTime(reportData.visit.order_date)}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Referring Doctor:</span>
-                  <span className="font-semibold text-slate-800">
-                    {reportData.doctor ? `Dr. ${reportData.doctor.full_name}` : 'Self / Direct Patient'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Visit Accession #:</span>
-                  <span className="font-mono font-semibold text-slate-800">{reportData.visit.visit_number}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Contact:</span>
-                  <span className="text-slate-700">{reportData.patient.phone_number || 'None'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Report Status:</span>
-                  <span className="font-bold uppercase text-slate-900">
-                    {reportData.snapshot ? 'Finalized' : reportData.visit.status}
-                  </span>
-                </div>
-              </div>
-
-              {/* Test Results Table */}
-              <div className="space-y-6">
-                {reportData.tests.map((testEntry) => (
-                  <div key={testEntry.orderItem.id} className="border border-slate-200 rounded-lg overflow-hidden">
-                    {/* Test Header */}
-                    <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-                      <span className="font-bold text-slate-900 text-xs">
-                        {testEntry.orderItem.test_name_snapshot}
+              {/* Patient and visit details */}
+              <section className="mt-3 border border-slate-400 rounded">
+                <dl className="grid grid-cols-2 divide-x divide-slate-300 px-3 py-1.5">
+                  <div className="pr-4">
+                    <InfoRow label="MR no." mono>
+                      {reportData.patient.patient_mrn}
+                    </InfoRow>
+                    <InfoRow label="Patient name">
+                      <span className="font-semibold">{reportData.patient.full_name}</span>
+                    </InfoRow>
+                    <InfoRow label="Age / sex">
+                      <span className="capitalize">
+                        {ageInfo ? ageInfo.formatted : 'Age not recorded'} / {reportData.patient.gender}
                       </span>
-                      <span className="font-mono text-[11px] text-slate-500">
-                        Code: {testEntry.orderItem.test_code_snapshot}
+                    </InfoRow>
+                    <InfoRow label="Phone">{reportData.patient.phone_number || '—'}</InfoRow>
+                    <InfoRow label="Referred by">
+                      {reportData.doctor ? `Dr. ${reportData.doctor.full_name}` : 'Self'}
+                    </InfoRow>
+                  </div>
+
+                  <div className="pl-4">
+                    <InfoRow label="Report no." mono>
+                      {snapshot?.report_number || `VISIT-${reportData.visit.visit_number}`}
+                    </InfoRow>
+                    <InfoRow label="Visit no." mono>
+                      {reportData.visit.visit_number}
+                    </InfoRow>
+                    <InfoRow label="Visit date">{formatDateTime(reportData.visit.order_date)}</InfoRow>
+                    <InfoRow label="Printed on">{formatDateTime(new Date().toISOString())}</InfoRow>
+                    <InfoRow label="Status">
+                      {snapshot
+                        ? snapshot.status === 'amended'
+                          ? `Amended, revision ${snapshot.version}`
+                          : 'Final'
+                        : <span className="capitalize">{reportData.visit.status}</span>}
+                    </InfoRow>
+                  </div>
+                </dl>
+              </section>
+
+              {/* Results, one block per test */}
+              <div className="mt-4 space-y-5">
+                {reportData.tests.map((testEntry) => (
+                  <section key={testEntry.orderItem.id}>
+                    <div className="flex items-baseline justify-between border-b border-black pb-1">
+                      <h2 className="text-[14px] font-bold">
+                        {testEntry.orderItem.test_name_snapshot}
+                      </h2>
+                      <span className="text-[11px] text-slate-600">
+                        {testEntry.orderItem.test_code_snapshot}
                       </span>
                     </div>
 
-                    {/* Parameters Table */}
-                    <table className="w-full text-xs text-left border-collapse">
-                      <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[10px] uppercase">
-                        <tr>
-                          <th className="py-2 px-4">Test Parameter</th>
-                          <th className="py-2 px-3 text-right">Observed Result</th>
-                          <th className="py-2 px-3 text-center">Flag</th>
-                          <th className="py-2 px-3">Units</th>
-                          <th className="py-2 px-4">Configured Reference Range</th>
-                          {onOpenAmendment && reportData.snapshot && (
-                            <th className="py-2 px-2 text-center w-12 print:hidden">Amend</th>
+                    <table className="w-full border-collapse text-left">
+                      <thead>
+                        <tr className="text-[11px] font-semibold text-slate-700 border-b border-slate-400">
+                          <th scope="col" className="py-1.5 pr-3 w-[34%]">
+                            Test
+                          </th>
+                          <th scope="col" className="py-1.5 pr-3 w-[18%]">
+                            Result
+                          </th>
+                          <th scope="col" className="py-1.5 pr-3">
+                            Reference range
+                          </th>
+                          <th scope="col" className="py-1.5 w-[14%]">
+                            Unit
+                          </th>
+                          {showAmendColumn && (
+                            <th scope="col" className="py-1.5 w-14 text-center print:hidden">
+                              <span className="sr-only">Amend</span>
+                            </th>
                           )}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody>
                         {testEntry.results.map((pr) => {
                           const flag = pr.flag;
                           const isCritical = flag === 'critical';
                           const isHigh = flag === 'high';
                           const isLow = flag === 'low';
+                          const abnormal = isCritical || isHigh || isLow;
 
                           return (
-                            <tr key={pr.parameter.id} className="hover:bg-slate-50/60">
-                              <td className="py-2.5 px-4 font-semibold text-slate-900">
-                                {pr.parameter.name}
-                              </td>
+                            <tr
+                              key={pr.parameter.id}
+                              className="border-b border-slate-200 print:break-inside-avoid"
+                            >
+                              <td className="py-1.5 pr-3 font-medium">{pr.parameter.name}</td>
+
                               <td
-                                className={`py-2.5 px-3 text-right font-mono text-sm ${
-                                  isCritical
-                                    ? 'font-black text-red-700 bg-red-50/80'
-                                    : isHigh
-                                    ? 'font-bold text-amber-700'
-                                    : isLow
-                                    ? 'font-bold text-sky-700'
-                                    : 'font-bold text-slate-900'
+                                className={`py-1.5 pr-3 tabular-nums ${
+                                  abnormal ? 'font-bold' : 'font-medium'
                                 }`}
                               >
-                                {pr.result ? pr.result.result_value : <span className="text-slate-400 italic">Pending</span>}
-                              </td>
-                              <td className="py-2.5 px-3 text-center">
-                                {isCritical ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-black text-[10px] uppercase">
-                                    CRITICAL
-                                  </span>
-                                ) : isHigh ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">
-                                    HIGH
-                                  </span>
-                                ) : isLow ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-900 font-bold text-[10px]">
-                                    LOW
-                                  </span>
+                                {pr.result ? (
+                                  <>
+                                    {pr.result.result_value}
+                                    {isCritical && (
+                                      <span className="ml-2 border border-black px-1 text-[10px] font-bold uppercase">
+                                        Critical
+                                      </span>
+                                    )}
+                                    {isHigh && <span className="ml-2 text-[11px]">H</span>}
+                                    {isLow && <span className="ml-2 text-[11px]">L</span>}
+                                  </>
                                 ) : (
-                                  <span className="text-slate-400 font-medium text-[10px]">Normal</span>
+                                  <span className="font-normal italic text-slate-500">Pending</span>
                                 )}
                               </td>
-                              <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px]">
-                                {pr.parameter.unit || '—'}
+
+                              <td className="py-1.5 pr-3 text-slate-700">
+                                {pr.referenceRangeDisplay || '—'}
                               </td>
-                              <td className="py-2.5 px-4 text-slate-600 font-medium text-[11px]">
-                                {pr.referenceRangeDisplay}
-                              </td>
-                              {onOpenAmendment && reportData.snapshot && pr.result && (
-                                <td className="py-2.5 px-2 text-center print:hidden">
-                                  <button
-                                    type="button"
-                                    onClick={() => onOpenAmendment(pr.result!.id)}
-                                    className="text-[10px] text-brand-600 font-bold hover:underline"
-                                  >
-                                    Amend
-                                  </button>
+                              <td className="py-1.5 text-slate-700">{pr.parameter.unit || ''}</td>
+
+                              {showAmendColumn && (
+                                <td className="py-1.5 text-center print:hidden">
+                                  {pr.result && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onOpenAmendment!(pr.result!.id)}
+                                      className="text-[12px] font-medium text-[#0F766E] hover:text-[#115E59] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded-sm"
+                                    >
+                                      Amend
+                                    </button>
+                                  )}
                                 </td>
                               )}
                             </tr>
@@ -298,83 +352,72 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </section>
                 ))}
               </div>
 
-              {/* Amendment History (If Corrected) */}
-              {reportData.amendments && reportData.amendments.length > 0 && (
-                <div className="p-3.5 rounded-lg border border-amber-300 bg-amber-50/60 text-xs space-y-2">
-                  <h4 className="font-bold text-amber-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
-                    Formal Clinical Amendment History
-                  </h4>
-                  <div className="divide-y divide-amber-200">
-                    {reportData.amendments.map((am) => (
-                      <div key={am.id} className="py-1.5 text-[11px] text-amber-900">
-                        <span className="font-bold">{am.parameter_name}:</span> Changed from{' '}
-                        <span className="font-mono line-through text-slate-500">{am.previous_value}</span> to{' '}
-                        <strong className="font-mono text-emerald-800">{am.new_value}</strong> on{' '}
-                        {formatDateTime(am.created_at)} by {am.amended_by_name || 'Staff'}.
-                        <p className="italic text-slate-600 mt-0.5">Reason: "{am.amendment_reason}"</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {reportData.tests.some((t) =>
+                t.results.some((r) => r.flag === 'high' || r.flag === 'low' || r.flag === 'critical')
+              ) && (
+                <p className="mt-2 text-[11px] text-slate-600">
+                  H = above the reference range. L = below the reference range.
+                </p>
               )}
 
-              {/* Footer Signatures and Disclaimer */}
-              <div className="pt-8 border-t border-slate-300 space-y-6">
-                <div className="grid grid-cols-2 gap-8 text-center text-xs">
+              {/* Amendments */}
+              {reportData.amendments && reportData.amendments.length > 0 && (
+                <section className="mt-5 print:break-inside-avoid">
+                  <h2 className="text-[13px] font-bold border-b border-black pb-1">
+                    Corrections to this report
+                  </h2>
+                  <ul className="divide-y divide-slate-200">
+                    {reportData.amendments.map((am) => (
+                      <li key={am.id} className="py-1.5 text-[11px]">
+                        <span className="font-semibold">{am.parameter_name}</span>: changed from{' '}
+                        <span className="line-through text-slate-600 tabular-nums">
+                          {am.previous_value}
+                        </span>{' '}
+                        to <span className="font-bold tabular-nums">{am.new_value}</span> on{' '}
+                        {formatDateTime(am.created_at)} by {am.amended_by_name || 'staff'}.
+                        <span className="block text-slate-600">Reason: {am.amendment_reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {/* Signatures and footer */}
+              <footer className="mt-10 print:break-inside-avoid">
+                <div className="grid grid-cols-2 gap-10 text-center">
                   <div>
-                    <div className="border-b border-slate-400 w-48 mx-auto mb-1"></div>
-                    <p className="font-semibold text-slate-800">Medical Technologist</p>
-                    <p className="text-[10px] text-slate-400">Specimen Processing & Analysis</p>
+                    <div className="border-b border-black mx-6 h-8" />
+                    <p className="font-semibold mt-1">Medical technologist</p>
                   </div>
                   <div>
-                    <div className="border-b border-slate-400 w-48 mx-auto mb-1"></div>
-                    <p className="font-semibold text-slate-800">Pathologist / Lab In-Charge</p>
-                    <p className="text-[10px] text-slate-400">Verification & Report Finalization</p>
+                    <div className="border-b border-black mx-6 h-8" />
+                    <p className="font-semibold mt-1">Pathologist / Lab in-charge</p>
                   </div>
                 </div>
 
-                {/* Verification Digest */}
-                <div className="p-2.5 rounded bg-slate-100 text-[10px] text-slate-500 flex items-center justify-between font-mono">
-                  <div className="flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Digitally Verified Local Diagnostic Record</span>
-                  </div>
-                  {reportData.snapshot && (
-                    <span title="SHA-256 Tamper-Evident Hash">
-                      Hash: {reportData.snapshot.integrity_hash.substring(0, 16)}...
-                    </span>
+                <div className="mt-6 pt-2 border-t border-slate-300 text-center text-[10px] text-slate-600 leading-4">
+                  <p>
+                    Results should be read together with the patient’s symptoms and history. This
+                    report was produced by a computer; a stamp or signature confirms it.
+                  </p>
+                  {snapshot && (
+                    <p className="mt-0.5 tabular-nums">
+                      Verification code: {snapshot.integrity_hash.substring(0, 16)}
+                    </p>
                   )}
                 </div>
-
-                <div className="text-[9px] text-slate-400 text-center leading-relaxed">
-                  <p>
-                    This diagnostic report was produced by an offline medical laboratory system. Results must be interpreted in clinical correlation with the patient's symptoms and history.
-                  </p>
-                  <p className="mt-0.5">
-                    Printed: {new Date().toISOString()} • End of Diagnostic Report
-                  </p>
-                </div>
-              </div>
+              </footer>
             </div>
           ) : (
-            <div className="text-center py-20 text-slate-400">Report details not available.</div>
+            <div className="text-center py-20 text-[13px]">
+              <p className="font-medium">The report is not available</p>
+              {loadError && <p className="text-[#64748B] mt-0.5">{loadError}</p>}
+            </div>
           )}
-        </div>
-
-        {/* Modal Footer - Hidden in Print */}
-        <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end gap-3 print:hidden">
-          <Button size="sm" variant="secondary" onClick={onClose}>
-            Close
-          </Button>
-          <Button size="sm" variant="primary" onClick={handlePrint}>
-            <Printer className="w-4 h-4 mr-1.5" />
-            Print Report
-          </Button>
         </div>
       </div>
     </div>

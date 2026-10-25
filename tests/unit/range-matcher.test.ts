@@ -192,6 +192,16 @@ describe('Unit: Clinical Range Matcher & Precision Engine', () => {
     expect(evalRes.isValid).toBe(true);
   });
 
+  it('displays the configured reference range immediately even when value is empty', () => {
+    const emptyEval = RangeMatcher.evaluateResult('', 'numeric', 'g/dL', sampleHemoglobinRanges, {
+      gender: 'male',
+      dateOfBirth: '1995-01-01',
+    });
+    expect(emptyEval.referenceRangeDisplay).toBe('13.0 - 17.5 g/dL');
+    expect(emptyEval.matchedRangeRule).not.toBeNull();
+    expect(emptyEval.flag).toBe('unconfigured');
+  });
+
   it('evaluates text / qualitative parameters (e.g. Negative vs Positive)', () => {
     const textRanges: ParameterRangeRule[] = [
       {
