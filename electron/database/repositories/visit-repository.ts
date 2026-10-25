@@ -7,6 +7,7 @@ import {
   VisitDetail,
   VisitSearchResult,
   CreateVisitOrderInput,
+  UpdateVisitOrderAndInvoiceInput,
   RecordPaymentInput,
 } from '../../types/ipc';
 import { BillingService, BillingError } from '../../services/billing-service';
@@ -310,6 +311,220 @@ export class VisitRepository {
     const detail = this.getVisitById(createdVisitId);
     if (!detail) {
       throw new DatabaseError(`Failed to retrieve newly created visit with ID ${createdVisitId}.`);
+    }
+    return detail;
+  }
+
+  /**
+   * Updates an existing visit's referring doctor, clinical notes, ordered tests, and invoice.
+   * Recalculates subtotal, discount, and balance based on existing payments.
+   * Preserves already recorded payments and existing test results for retained tests.
+   */
+  public updateVisitOrderAndInvoice(
+    input: UpdateVisitOrderAndInvoiceInput,
+    operatorId: number
+  ): VisitDetail {
+    const db = this.dbManager.getDatabase();
+
+    const transaction = db.transaction(() => {
+      const now = new Date().toISOString();
+
+      // 1. Fetch current visit & invoice
+      const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(input.visitId) as Visit | undefined;
+      if (!visit) {
+        throw new DatabaseError(`Visit with ID ${input.visitId} does not exist.`);
+      }
+
+      const invoice = db.prepare('SELECT * FROM invoices WHERE visit_id = ?').get(input.visitId) as Invoice | undefined;
+      if (!invoice) {
+        throw new DatabaseError(`Invoice for visit ID ${input.visitId} does not exist.`);
+      }
+
+      // 2. Fetch current cleared payments
+      const payments = db
+        .prepare('SELECT * FROM payments WHERE invoice_id = ? AND status = ?')
+        .all(invoice.id, 'cleared') as Payment[];
+      const totalPaidPaisaBefore = payments.reduce((sum, p) => sum + p.amount, 0);
+
+      // 3. Validate new test IDs
+      if (!input.testIds || input.testIds.length === 0) {
+        throw new DatabaseError('An order must contain at least one laboratory test.');
+      }
+
+      const placeholders = input.testIds.map(() => '?').join(',');
+      const tests = db
+        .prepare(`SELECT id, test_code, test_name, price_paisa, is_active FROM lab_tests WHERE id IN (${placeholders})`)
+        .all(...input.testIds) as Array<{
+          id: number;
+          test_code: string;
+          test_name: string;
+          price_paisa: number;
+          is_active: number;
+        }>;
+
+      if (tests.length !== input.testIds.length) {
+        throw new DatabaseError('One or more selected laboratory tests do not exist in the active catalog.');
+      }
+
+      // 4. Calculate updated billing
+      const billingItems = tests.map((t) => ({
+        testId: t.id,
+        testCode: t.test_code,
+        testName: t.test_name,
+        pricePaisa: t.price_paisa,
+        quantity: 1,
+      }));
+
+      const discountType = input.discountType || 'none';
+      const discountValue = input.discountValue ?? 0;
+
+      const initialBilling = BillingService.calculateOrderBilling(
+        billingItems,
+        { type: discountType, value: discountValue },
+        0
+      );
+
+      const finalTotalPaisa = initialBilling.finalTotalPaisa;
+
+      // Handle additional payment if received now
+      const additionalPaymentPaisa = Math.max(0, input.additionalPaymentPaisa || 0);
+      let totalPaidPaisa = totalPaidPaisaBefore;
+
+      if (additionalPaymentPaisa > 0) {
+        const remainingBeforePayment = Math.max(0, finalTotalPaisa - totalPaidPaisaBefore);
+        if (additionalPaymentPaisa > remainingBeforePayment) {
+          throw new DatabaseError(
+            `Payment amount (${additionalPaymentPaisa / 100}) exceeds remaining balance (${remainingBeforePayment / 100}).`
+          );
+        }
+
+        const receiptNumber = this.generateNextReceiptNumber();
+        const insertPaymentStmt = db.prepare(`
+          INSERT INTO payments (
+            receipt_number, invoice_id, amount, payment_method,
+            transaction_reference, operator_id, status, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        insertPaymentStmt.run(
+          receiptNumber,
+          invoice.id,
+          additionalPaymentPaisa,
+          input.paymentMethod || 'cash',
+          input.transactionReference ? input.transactionReference.trim() : null,
+          operatorId,
+          'cleared',
+          now
+        );
+
+        totalPaidPaisa += additionalPaymentPaisa;
+      }
+
+      const balancePaisa = Math.max(0, finalTotalPaisa - totalPaidPaisa);
+      let paymentStatus: 'unpaid' | 'partially_paid' | 'paid';
+      if (finalTotalPaisa === 0 || totalPaidPaisa >= finalTotalPaisa) {
+        paymentStatus = 'paid';
+      } else if (totalPaidPaisa > 0) {
+        paymentStatus = 'partially_paid';
+      } else {
+        paymentStatus = 'unpaid';
+      }
+
+      // 5. Update Visit
+      db.prepare(`
+        UPDATE visits
+        SET referring_doctor_id = ?, notes = ?, operator_id = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        input.referringDoctorId || null,
+        input.notes ? input.notes.trim() : null,
+        operatorId,
+        now,
+        input.visitId
+      );
+
+      // 6. Synchronize Order Items
+      const existingOrderItems = db
+        .prepare('SELECT * FROM order_items WHERE visit_id = ?')
+        .all(input.visitId) as OrderItem[];
+
+      const newTestIdSet = new Set(input.testIds);
+      const existingTestIdSet = new Set(existingOrderItems.map((oi) => oi.test_id));
+
+      // Remove deleted order items (and their results if any)
+      for (const item of existingOrderItems) {
+        if (!newTestIdSet.has(item.test_id)) {
+          db.prepare('DELETE FROM test_results WHERE order_item_id = ?').run(item.id);
+          db.prepare('DELETE FROM order_items WHERE id = ?').run(item.id);
+        }
+      }
+
+      // Add new order items
+      const insertOrderItemStmt = db.prepare(`
+        INSERT INTO order_items (
+          visit_id, test_id, test_code_snapshot, test_name_snapshot,
+          price_snapshot, quantity, subtotal_amount, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ordered', ?)
+      `);
+
+      for (const item of initialBilling.itemCalculations) {
+        if (!existingTestIdSet.has(item.testId)) {
+          insertOrderItemStmt.run(
+            input.visitId,
+            item.testId,
+            item.testCode,
+            item.testName,
+            item.priceSnapshotPaisa,
+            item.quantity,
+            item.itemSubtotalPaisa,
+            now
+          );
+        }
+      }
+
+      // 7. Update Invoice
+      db.prepare(`
+        UPDATE invoices
+        SET subtotal_amount = ?, discount_type = ?, discount_value = ?, discount_amount = ?,
+            final_total = ?, paid_amount = ?, balance_amount = ?, payment_status = ?, finalized_at = ?
+        WHERE id = ?
+      `).run(
+        initialBilling.subtotalPaisa,
+        initialBilling.discountType,
+        initialBilling.discountValue,
+        initialBilling.discountPaisa,
+        finalTotalPaisa,
+        totalPaidPaisa,
+        balancePaisa,
+        paymentStatus,
+        paymentStatus === 'paid' ? now : invoice.finalized_at,
+        invoice.id
+      );
+
+      // 8. Log Audit
+      this.auditRepo.logAction({
+        userId: operatorId,
+        action: 'VISIT_ORDER_INVOICE_EDITED',
+        entityType: 'visits',
+        entityId: String(input.visitId),
+        details: {
+          visitId: input.visitId,
+          previousFinalTotal: invoice.final_total,
+          newFinalTotal: finalTotalPaisa,
+          additionalPaymentPaisa,
+          totalPaidPaisa,
+          newBalance: balancePaisa,
+          testCount: input.testIds.length,
+        },
+      });
+
+      return input.visitId;
+    });
+
+    const updatedVisitId = transaction();
+    const detail = this.getVisitById(updatedVisitId);
+    if (!detail) {
+      throw new DatabaseError(`Failed to retrieve updated visit with ID ${updatedVisitId}.`);
     }
     return detail;
   }

@@ -383,6 +383,7 @@ import { Visit, VisitSearchResult, VisitDetail, HospitalSettings } from '../../t
 import { formatCurrency, formatDateTime } from '../../lib/utils';
 import { ReceiptPrintModal } from './ReceiptPrintModal';
 import { RecordPaymentModal } from './RecordPaymentModal';
+import { EditVisitOrderModal } from './EditVisitOrderModal';
 import { LabReportPreviewModal } from '../reports/LabReportPreviewModal';
 import { Search, RefreshCw, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 
@@ -452,6 +453,7 @@ export const VisitListView: React.FC<VisitListViewProps> = ({
   const [visitToCollectPayment, setVisitToCollectPayment] = useState<Visit | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [previewVisitId, setPreviewVisitId] = useState<number | null>(null);
+  const [editingVisitId, setEditingVisitId] = useState<number | null>(null);
 
   const fetchVisits = useCallback(async () => {
     setIsLoading(true);
@@ -624,6 +626,14 @@ export const VisitListView: React.FC<VisitListViewProps> = ({
                           <button
                             type="button"
                             className={smallBtn}
+                            onClick={() => setEditingVisitId(v.id)}
+                            title="Edit order, doctor, tests or bill discount"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className={smallBtn}
                             onClick={() => handleOpenReceipt(v.id)}
                             title="View or print the receipt"
                           >
@@ -727,6 +737,16 @@ export const VisitListView: React.FC<VisitListViewProps> = ({
         visitId={previewVisitId}
         isOpen={!!previewVisitId}
         onClose={() => setPreviewVisitId(null)}
+      />
+
+      {/* Edit visit order and invoice modal */}
+      <EditVisitOrderModal
+        visitId={editingVisitId}
+        isOpen={!!editingVisitId}
+        onClose={() => setEditingVisitId(null)}
+        onSuccess={() => {
+          fetchVisits();
+        }}
       />
     </div>
   );

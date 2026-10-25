@@ -6,6 +6,7 @@ import {
   ResultAmendment,
   WorklistOrderItem,
   FullDiagnosticReport,
+  ReportHistoryEntry,
   SaveDraftResultsInput,
   FinalizeReportInput,
   AmendResultInput,
@@ -309,10 +310,6 @@ export class ResultRepository {
         throw new DatabaseError(`Order item with ID ${input.orderItemId} does not exist.`);
       }
 
-      if (orderItem.status === 'completed') {
-        throw new DatabaseError('This order has already been finalized. Modifications require a formal clinical amendment.');
-      }
-
       const visit = db
         .prepare(`SELECT * FROM visits WHERE id = ?`)
         .get(orderItem.visit_id) as Visit;
@@ -322,6 +319,18 @@ export class ResultRepository {
         .get(visit.patient_id) as Patient;
 
       const now = new Date().toISOString();
+
+      // Clear / delete any parameters for this order item that were removed/cleared by the operator
+      const enteredParamIds = input.results.map((r) => r.parameterId);
+      if (enteredParamIds.length > 0) {
+        const placeholders = enteredParamIds.map(() => '?').join(',');
+        db.prepare(`
+          DELETE FROM test_results
+          WHERE order_item_id = ? AND parameter_id NOT IN (${placeholders})
+        `).run(input.orderItemId, ...enteredParamIds);
+      } else {
+        db.prepare(`DELETE FROM test_results WHERE order_item_id = ?`).run(input.orderItemId);
+      }
 
       const upsertResultStmt = db.prepare(`
         INSERT INTO test_results (
@@ -337,6 +346,8 @@ export class ResultRepository {
           flag = excluded.flag,
           status = CASE WHEN test_results.status = 'finalized' THEN 'finalized' ELSE 'draft' END,
           result_notes = excluded.result_notes,
+          entered_by = excluded.entered_by,
+          entered_at = excluded.entered_at,
           updated_at = excluded.updated_at
       `);
 
@@ -388,9 +399,9 @@ export class ResultRepository {
         );
       }
 
-      // Transition order item and visit to 'in_progress'
-      db.prepare(`UPDATE order_items SET status = 'in_progress' WHERE id = ? AND status = 'ordered'`).run(input.orderItemId);
-      db.prepare(`UPDATE visits SET status = 'in_progress' WHERE id = ? AND status = 'registered'`).run(orderItem.visit_id);
+      // Transition order item and visit to 'in_progress' if not completed
+      db.prepare(`UPDATE order_items SET status = CASE WHEN status = 'ordered' THEN 'in_progress' ELSE status END WHERE id = ?`).run(input.orderItemId);
+      db.prepare(`UPDATE visits SET status = CASE WHEN status = 'registered' THEN 'in_progress' ELSE status END, updated_at = ?, operator_id = ? WHERE id = ?`).run(now, operatorId, orderItem.visit_id);
 
       this.auditRepo.logAction({
         userId: operatorId,
@@ -427,16 +438,15 @@ export class ResultRepository {
         throw new DatabaseError(`Visit with ID ${input.visitId} does not exist.`);
       }
 
-      // Check if already finalized snapshot exists
+      // Check if already finalized snapshot exists to support revisions / edits
       const existingSnapshot = db
         .prepare(`SELECT * FROM report_snapshots WHERE visit_id = ? ORDER BY version DESC LIMIT 1`)
         .get(input.visitId) as ReportSnapshot | undefined;
 
-      if (existingSnapshot && existingSnapshot.status === 'finalized') {
-        throw new DatabaseError('This laboratory report has already been finalized.');
-      }
+      const nextVersion = existingSnapshot ? existingSnapshot.version + 1 : 1;
+      const reportNumber = existingSnapshot ? existingSnapshot.report_number : this.generateNextReportNumber();
 
-      // Check that all order items have complete results
+      // Check that this visit has laboratory orders
       const orderItems = db
         .prepare(`SELECT * FROM order_items WHERE visit_id = ?`)
         .all(input.visitId) as OrderItem[];
@@ -445,54 +455,26 @@ export class ResultRepository {
         throw new DatabaseError('This visit has no laboratory test orders.');
       }
 
+      // Check that EVERY ordered test has at least one entered parameter with a non-empty value
       for (const item of orderItems) {
-        const requiredParams = db
-          .prepare(`SELECT id, parameter_name FROM test_parameters WHERE test_id = ? AND is_active = 1`)
-          .all(item.test_id) as Array<{ id: number; parameter_name: string }>;
+        const itemHasResults = db
+          .prepare(`
+            SELECT count(*) as c 
+            FROM test_results 
+            WHERE order_item_id = ? AND result_value IS NOT NULL AND trim(result_value) != ''
+          `)
+          .get(item.id) as { c: number };
 
-        const enteredResults = db
-          .prepare(`SELECT parameter_id FROM test_results WHERE order_item_id = ?`)
-          .all(item.id) as Array<{ parameter_id: number }>;
-
-        const enteredSet = new Set(enteredResults.map((r) => r.parameter_id));
-
-        for (const rp of requiredParams) {
-          if (!enteredSet.has(rp.id)) {
-            throw new DatabaseError(`Cannot finalize report: Result for required parameter "${rp.parameter_name}" in test "${item.test_name_snapshot}" has not been entered.`);
-          }
+        if (!itemHasResults || itemHasResults.c === 0) {
+          throw new DatabaseError(
+            `Cannot finalize report: Test "${item.test_name_snapshot}" has no entered results. Please enter at least one value for every test in the order before finalizing.`
+          );
         }
       }
 
       const now = new Date().toISOString();
 
-      // Build complete report document structure for snapshot
-      const reportData = this.getFullDiagnosticReport(input.visitId);
-
-      // Serialize and hash
-      const snapshotJson = JSON.stringify(reportData);
-      const integrityHash = crypto.createHash('sha256').update(snapshotJson).digest('hex');
-      const reportNumber = this.generateNextReportNumber();
-
-      const insertSnapshotStmt = db.prepare(`
-        INSERT INTO report_snapshots (
-          visit_id, version, report_number, status,
-          snapshot_json, integrity_hash, finalized_by, finalized_at, created_at
-        ) VALUES (?, 1, ?, 'finalized', ?, ?, ?, ?, ?)
-      `);
-
-      const result = insertSnapshotStmt.run(
-        input.visitId,
-        reportNumber,
-        snapshotJson,
-        integrityHash,
-        operatorId,
-        now,
-        now
-      );
-
-      const snapshotId = Number(result.lastInsertRowid);
-
-      // Lock all test results to 'finalized'
+      // Lock all test results and order items to completed/finalized
       for (const item of orderItems) {
         db.prepare(`
           UPDATE test_results
@@ -504,16 +486,49 @@ export class ResultRepository {
       }
 
       // Mark visit as completed
-      db.prepare(`UPDATE visits SET status = 'completed', updated_at = ? WHERE id = ?`).run(now, input.visitId);
+      db.prepare(`UPDATE visits SET status = 'completed', updated_at = ?, operator_id = ? WHERE id = ?`).run(now, operatorId, input.visitId);
+
+      // Insert snapshot record with nextVersion
+      const insertSnapshotStmt = db.prepare(`
+        INSERT INTO report_snapshots (
+          visit_id, version, report_number, status,
+          snapshot_json, integrity_hash, finalized_by, finalized_at, created_at
+        ) VALUES (?, ?, ?, 'finalized', '', '', ?, ?, ?)
+      `);
+
+      const result = insertSnapshotStmt.run(
+        input.visitId,
+        nextVersion,
+        reportNumber,
+        operatorId,
+        now,
+        now
+      );
+
+      const snapshotId = Number(result.lastInsertRowid);
+
+      // Now compile reportData with the current snapshot in place so snapshot version matches!
+      const reportData = this.getFullDiagnosticReport(input.visitId);
+
+      // Serialize and hash
+      const snapshotJson = JSON.stringify(reportData);
+      const integrityHash = crypto.createHash('sha256').update(snapshotJson).digest('hex');
+
+      db.prepare(`
+        UPDATE report_snapshots
+        SET snapshot_json = ?, integrity_hash = ?
+        WHERE id = ?
+      `).run(snapshotJson, integrityHash, snapshotId);
 
       // Audit Log
       this.auditRepo.logAction({
         userId: operatorId,
-        action: 'REPORT_FINALIZED',
+        action: nextVersion > 1 ? 'REPORT_EDITED_FINALIZED' : 'REPORT_FINALIZED',
         entityType: 'report_snapshots',
         entityId: String(snapshotId),
         details: {
           visitId: input.visitId,
+          version: nextVersion,
           reportNumber,
           integrityHash,
           orderItemCount: orderItems.length,
@@ -787,8 +802,59 @@ export class ResultRepository {
     });
 
     const snapshot = (db
-      .prepare(`SELECT * FROM report_snapshots WHERE visit_id = ? ORDER BY version DESC LIMIT 1`)
-      .get(visitId) as ReportSnapshot) || null;
+      .prepare(`
+        SELECT rs.*, u.full_name as finalized_by_name
+        FROM report_snapshots rs
+        JOIN app_users u ON rs.finalized_by = u.id
+        WHERE rs.visit_id = ?
+        ORDER BY rs.version DESC LIMIT 1
+      `)
+      .get(visitId) as (ReportSnapshot & { finalized_by_name?: string })) || null;
+
+    const originalSnapshot = (snapshot && snapshot.version > 1)
+      ? (db
+          .prepare(`
+            SELECT rs.*, u.full_name as finalized_by_name
+            FROM report_snapshots rs
+            JOIN app_users u ON rs.finalized_by = u.id
+            WHERE rs.visit_id = ? AND rs.version = 1
+          `)
+          .get(visitId) as (ReportSnapshot & { finalized_by_name?: string }) | undefined)
+      : null;
+
+    let editorInfo: {
+      isEdited: boolean;
+      editedByName: string;
+      editedAt: string;
+      originalByName?: string;
+      originalAt?: string;
+      version: number;
+    } | null = null;
+
+    const isSnapshotEdited = !!snapshot && snapshot.version > 1;
+    const isVisitEdited =
+      !!visit &&
+      !!visit.updated_at &&
+      !!visit.created_at &&
+      new Date(visit.updated_at).getTime() - new Date(visit.created_at).getTime() > 1000;
+
+    if (isSnapshotEdited) {
+      editorInfo = {
+        isEdited: true,
+        editedByName: snapshot.finalized_by_name || visit.operator_name || 'Staff',
+        editedAt: snapshot.finalized_at,
+        originalByName: originalSnapshot?.finalized_by_name,
+        originalAt: originalSnapshot?.finalized_at,
+        version: snapshot.version,
+      };
+    } else if (isVisitEdited) {
+      editorInfo = {
+        isEdited: true,
+        editedByName: visit.operator_name || 'Staff',
+        editedAt: visit.updated_at,
+        version: snapshot ? snapshot.version : 1,
+      };
+    }
 
     // Get any amendments for this visit
     const amendments = db
@@ -804,6 +870,44 @@ export class ResultRepository {
       `)
       .all(visitId) as ResultAmendment[];
 
+    // Build complete report edit & audit history
+    const allSnapshots = db
+      .prepare(`
+        SELECT rs.version, rs.report_number, rs.status, rs.finalized_at, rs.created_at, u.full_name as finalized_by_name
+        FROM report_snapshots rs
+        JOIN app_users u ON rs.finalized_by = u.id
+        WHERE rs.visit_id = ?
+        ORDER BY rs.version ASC
+      `)
+      .all(visitId) as Array<{
+        version: number;
+        report_number: string;
+        status: string;
+        finalized_at: string;
+        created_at: string;
+        finalized_by_name: string;
+      }>;
+
+    const editHistory: ReportHistoryEntry[] = allSnapshots.map((s, idx) => ({
+      version: s.version,
+      reportNumber: s.report_number,
+      status: s.status,
+      operatorName: s.finalized_by_name || 'Staff',
+      date: s.finalized_at || s.created_at,
+      isInitial: idx === 0,
+    }));
+
+    if (editHistory.length === 0 && visit) {
+      editHistory.push({
+        version: 1,
+        reportNumber: `VISIT-${visit.visit_number}`,
+        status: 'draft',
+        operatorName: visit.operator_name || 'Staff',
+        date: visit.created_at,
+        isInitial: true,
+      });
+    }
+
     return {
       visit,
       patient,
@@ -812,6 +916,8 @@ export class ResultRepository {
       tests,
       snapshot,
       amendments,
+      editorInfo,
+      editHistory,
     };
   }
 }

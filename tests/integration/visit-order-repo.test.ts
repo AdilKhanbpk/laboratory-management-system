@@ -310,4 +310,70 @@ describe('Integration: Visit, Order & Billing Repository', () => {
     expect(invoiceCount.count).toBe(0);
     expect(orderItemsCount.count).toBe(0);
   });
+
+  it('updates an existing order by adding tests and collecting additional payment with Pay Full', () => {
+    const patient = patientRepo.createPatient({ fullName: 'Zahid Khan', gender: 'male' });
+    const cbc = catalogRepo.createTest({
+      testCode: 'CBC',
+      testName: 'Complete Blood Count',
+      category: 'Hematology',
+      pricePaisa: 50000, // Rs 500
+    });
+    const mg = catalogRepo.createTest({
+      testCode: 'MG',
+      testName: 'Serum Magnesium',
+      category: 'Biochemistry',
+      pricePaisa: 30000, // Rs 300
+    });
+    const ft3 = catalogRepo.createTest({
+      testCode: 'FT3',
+      testName: 'Free Thyroxine 3',
+      category: 'Endocrinology',
+      pricePaisa: 100000, // Rs 1000
+    });
+
+    // 1. Initial order: CBC + MG = Rs 800, fully paid Rs 800
+    const initialVisit = visitRepo.createVisitWithOrder(
+      {
+        patientId: patient.id,
+        testIds: [cbc.id, mg.id],
+        paidAmountPaisa: 80000,
+      },
+      operatorId
+    );
+
+    expect(initialVisit.invoice.subtotal_amount).toBe(80000);
+    expect(initialVisit.invoice.final_total).toBe(80000);
+    expect(initialVisit.invoice.paid_amount).toBe(80000);
+    expect(initialVisit.invoice.balance_amount).toBe(0);
+    expect(initialVisit.invoice.payment_status).toBe('paid');
+    expect(initialVisit.orderItems.length).toBe(2);
+
+    // 2. Patient decides to add FT3 (Rs 1,000) and pays in full now
+    const updatedDetail = visitRepo.updateVisitOrderAndInvoice(
+      {
+        visitId: initialVisit.visit.id,
+        testIds: [cbc.id, mg.id, ft3.id],
+        discountType: 'none',
+        discountValue: 0,
+        additionalPaymentPaisa: 100000, // Rs 1,000 paid now
+        paymentMethod: 'cash',
+      },
+      operatorId
+    );
+
+    // 3. Verify total is Rs 1,800, total paid is Rs 1,800, balance is Rs 0, status is paid
+    expect(updatedDetail.orderItems.length).toBe(3);
+    expect(updatedDetail.invoice.subtotal_amount).toBe(180000);
+    expect(updatedDetail.invoice.final_total).toBe(180000);
+    expect(updatedDetail.invoice.paid_amount).toBe(180000);
+    expect(updatedDetail.invoice.balance_amount).toBe(0);
+    expect(updatedDetail.invoice.payment_status).toBe('paid');
+
+    // 4. Verify 2 distinct payment records exist (first Rs 800, second Rs 1000)
+    expect(updatedDetail.payments.length).toBe(2);
+    expect(updatedDetail.payments[0].amount).toBe(80000);
+    expect(updatedDetail.payments[1].amount).toBe(100000);
+    expect(updatedDetail.payments[1].receipt_number).toMatch(/^RCT-\d{4}-\d{5}$/);
+  });
 });

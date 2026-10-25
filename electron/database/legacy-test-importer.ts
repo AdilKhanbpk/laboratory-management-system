@@ -222,7 +222,7 @@ export function parseLegacyReferenceRanges(
   paramName: string,
   rawRange: string | null,
   testName = '',
-  unit = ''
+  _unit: string | null = ''
 ): LegacyReferenceRangeItem[] {
   const pName = (paramName || '').trim().toUpperCase();
   const tName = (testName || '').trim().toUpperCase();
@@ -439,10 +439,6 @@ export function importLegacyTestsToActiveDatabase(
 
   // Execute import inside an atomic transaction on the active LMS database
   dbManager.runTransaction((tx) => {
-    // Collect existing test codes to avoid colliding with already registered custom tests
-    const existingRows = tx.prepare('SELECT test_code FROM lab_tests').all() as { test_code: string }[];
-    const existingCodeSet = new Set(existingRows.map(r => r.test_code.toUpperCase()));
-
     const checkTestStmt = tx.prepare('SELECT id FROM lab_tests WHERE test_code = ? COLLATE NOCASE');
     const updateTestStmt = tx.prepare(`
       UPDATE lab_tests

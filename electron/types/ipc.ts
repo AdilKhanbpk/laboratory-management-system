@@ -323,6 +323,23 @@ export const CreateVisitOrderSchema = z
 
 export type CreateVisitOrderInput = z.input<typeof CreateVisitOrderSchema>;
 
+export const UpdateVisitOrderAndInvoiceSchema = z.object({
+  visitId: z.number().int().positive(),
+  referringDoctorId: z.number().int().positive().nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+  testIds: z.array(z.number().int().positive()).min(1, 'At least one laboratory test must be selected in the order'),
+  discountType: z.enum(['none', 'fixed', 'percentage']).default('none'),
+  discountValue: z.number().nonnegative().default(0),
+  additionalPaymentPaisa: z.number().int().nonnegative().optional().default(0),
+  paymentMethod: z
+    .enum(['cash', 'credit_card', 'debit_card', 'bank_transfer', 'cheque', 'other'])
+    .optional()
+    .default('cash'),
+  transactionReference: z.string().max(100).optional(),
+});
+
+export type UpdateVisitOrderAndInvoiceInput = z.infer<typeof UpdateVisitOrderAndInvoiceSchema>;
+
 export const RecordPaymentSchema = z.object({
   invoiceId: z.number().int().positive(),
   amountPaisa: z.number().int().positive('Payment amount must be greater than zero'),
@@ -425,6 +442,24 @@ export interface WorklistOrderItem {
   parametersEntered: number;
 }
 
+export interface ReportEditorInfo {
+  isEdited: boolean;
+  editedByName: string;
+  editedAt: string;
+  originalByName?: string;
+  originalAt?: string;
+  version: number;
+}
+
+export interface ReportHistoryEntry {
+  version: number;
+  reportNumber: string;
+  status: string;
+  operatorName: string;
+  date: string;
+  isInitial: boolean;
+}
+
 export interface FullDiagnosticReport {
   visit: Visit;
   patient: Patient;
@@ -445,8 +480,10 @@ export interface FullDiagnosticReport {
       referenceRangeDisplay: string;
     }>;
   }>;
-  snapshot?: ReportSnapshot | null;
+  snapshot?: (ReportSnapshot & { finalized_by_name?: string }) | null;
   amendments?: ResultAmendment[];
+  editorInfo?: ReportEditorInfo | null;
+  editHistory?: ReportHistoryEntry[];
 }
 
 export interface PatientHistoryItem {
@@ -670,6 +707,7 @@ export interface ElectronAPI {
   };
   visits: {
     create: (input: CreateVisitOrderInput) => Promise<IpcResponse<VisitDetail>>;
+    updateOrderAndInvoice: (input: UpdateVisitOrderAndInvoiceInput) => Promise<IpcResponse<VisitDetail>>;
     getById: (id: number) => Promise<IpcResponse<VisitDetail | null>>;
     search: (params?: { query?: string; status?: string; startDate?: string; endDate?: string; page?: number; limit?: number }) => Promise<IpcResponse<VisitSearchResult>>;
     getPatientHistory: (patientId: number) => Promise<IpcResponse<Visit[]>>;

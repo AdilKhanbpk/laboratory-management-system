@@ -13,6 +13,7 @@ import type {
   UpdateDoctorInput,
   CreateTestInput,
   UpdateTestInput,
+  UpdateVisitOrderAndInvoiceInput,
 } from './types/ipc';
 
 // Inlined channel names to guarantee zero relative module resolution failures in preload
@@ -66,6 +67,7 @@ const CHANNELS = {
 
   // Visits & Orders
   VISITS_CREATE: 'visits:create',
+  VISITS_UPDATE_ORDER_INVOICE: 'visits:update-order-invoice',
   VISITS_GET_BY_ID: 'visits:get-by-id',
   VISITS_SEARCH: 'visits:search',
   VISITS_GET_PATIENT_HISTORY: 'visits:get-patient-history',
@@ -169,6 +171,7 @@ const api: ElectronAPI = {
   },
   visits: {
     create: (input) => ipcRenderer.invoke(CHANNELS.VISITS_CREATE, input),
+    updateOrderAndInvoice: (input) => ipcRenderer.invoke(CHANNELS.VISITS_UPDATE_ORDER_INVOICE, input),
     getById: (id: number) => ipcRenderer.invoke(CHANNELS.VISITS_GET_BY_ID, id),
     search: (params) => ipcRenderer.invoke(CHANNELS.VISITS_SEARCH, params),
     getPatientHistory: (patientId: number) => ipcRenderer.invoke(CHANNELS.VISITS_GET_PATIENT_HISTORY, patientId),

@@ -3,7 +3,7 @@ import { FullDiagnosticReport } from '../../types';
 import { Button } from '../../components/common/Button';
 import { Alert } from '../../components/common/Alert';
 import { formatDateTime, calculateAge } from '../../lib/utils';
-import { Printer, Download, X } from 'lucide-react';
+import { Printer, Download, X, History } from 'lucide-react';
 
 /*
  * Screen chrome uses the app tokens (teal #0F766E, border #E2E8F0, text #1F2937).
@@ -40,6 +40,7 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [exportStatus, setExportStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
   );
@@ -149,6 +150,16 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
             <Button
               size="sm"
               variant="outline"
+              onClick={() => setShowHistoryModal(true)}
+              disabled={!reportData}
+              title="View report creation and edit history"
+            >
+              <History className="w-3.5 h-3.5 mr-1.5 text-slate-600" />
+              Edit History
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={handleExportPdf}
               isLoading={isExportingPdf}
               disabled={!reportData}
@@ -245,102 +256,110 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                 </dl>
               </section>
 
-              {/* Results, one block per test */}
+              {/* Results, one block per test (skips un-entered parameters) */}
               <div className="mt-4 space-y-5">
-                {reportData.tests.map((testEntry) => (
-                  <section key={testEntry.orderItem.id}>
-                    <div className="flex items-baseline justify-between border-b border-black pb-1">
-                      <h2 className="text-[14px] font-bold">
-                        {testEntry.orderItem.test_name_snapshot}
-                      </h2>
-                      <span className="text-[11px] text-slate-600">
-                        {testEntry.orderItem.test_code_snapshot}
-                      </span>
-                    </div>
+                {reportData.tests.map((testEntry) => {
+                  const filledResults = testEntry.results.filter(
+                    (pr) => pr.result && pr.result.result_value != null && pr.result.result_value.trim() !== ''
+                  );
 
-                    <table className="w-full border-collapse text-left">
-                      <thead>
-                        <tr className="text-[11px] font-semibold text-slate-700 border-b border-slate-400">
-                          <th scope="col" className="py-1.5 pr-3 w-[34%]">
-                            Test
-                          </th>
-                          <th scope="col" className="py-1.5 pr-3 w-[18%]">
-                            Result
-                          </th>
-                          <th scope="col" className="py-1.5 pr-3">
-                            Reference range
-                          </th>
-                          <th scope="col" className="py-1.5 w-[14%]">
-                            Unit
-                          </th>
-                          {showAmendColumn && (
-                            <th scope="col" className="py-1.5 w-14 text-center print:hidden">
-                              <span className="sr-only">Amend</span>
+                  if (filledResults.length === 0) return null;
+
+                  return (
+                    <section key={testEntry.orderItem.id}>
+                      <div className="flex items-baseline justify-between border-b border-black pb-1">
+                        <h2 className="text-[14px] font-bold">
+                          {testEntry.orderItem.test_name_snapshot}
+                        </h2>
+                        <span className="text-[11px] text-slate-600">
+                          {testEntry.orderItem.test_code_snapshot}
+                        </span>
+                      </div>
+
+                      <table className="w-full border-collapse text-left">
+                        <thead>
+                          <tr className="text-[11px] font-semibold text-slate-700 border-b border-slate-400">
+                            <th scope="col" className="py-1.5 pr-3 w-[34%]">
+                              Test
                             </th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {testEntry.results.map((pr) => {
-                          const flag = pr.flag;
-                          const isCritical = flag === 'critical';
-                          const isHigh = flag === 'high';
-                          const isLow = flag === 'low';
-                          const abnormal = isCritical || isHigh || isLow;
+                            <th scope="col" className="py-1.5 pr-3 w-[18%]">
+                              Result
+                            </th>
+                            <th scope="col" className="py-1.5 pr-3">
+                              Reference range
+                            </th>
+                            <th scope="col" className="py-1.5 w-[14%]">
+                              Unit
+                            </th>
+                            {showAmendColumn && (
+                              <th scope="col" className="py-1.5 w-14 text-center print:hidden">
+                                <span className="sr-only">Amend</span>
+                              </th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filledResults.map((pr) => {
+                            const flag = pr.flag;
+                            const isCritical = flag === 'critical';
+                            const isHigh = flag === 'high';
+                            const isLow = flag === 'low';
+                            const abnormal = isCritical || isHigh || isLow;
 
-                          return (
-                            <tr
-                              key={pr.parameter.id}
-                              className="border-b border-slate-200 print:break-inside-avoid"
-                            >
-                              <td className="py-1.5 pr-3 font-medium">{pr.parameter.name}</td>
-
-                              <td
-                                className={`py-1.5 pr-3 tabular-nums ${
-                                  abnormal ? 'font-bold' : 'font-medium'
-                                }`}
+                            return (
+                              <tr
+                                key={pr.parameter.id}
+                                className="border-b border-slate-200 print:break-inside-avoid"
                               >
-                                {pr.result ? (
-                                  <>
-                                    {pr.result.result_value}
-                                    {isCritical && (
-                                      <span className="ml-2 border border-black px-1 text-[10px] font-bold uppercase">
-                                        Critical
-                                      </span>
-                                    )}
-                                    {isHigh && <span className="ml-2 text-[11px]">H</span>}
-                                    {isLow && <span className="ml-2 text-[11px]">L</span>}
-                                  </>
-                                ) : (
-                                  <span className="font-normal italic text-slate-500">Pending</span>
-                                )}
-                              </td>
+                                <td className="py-1.5 pr-3 font-medium">{pr.parameter.name}</td>
 
-                              <td className="py-1.5 pr-3 text-slate-700">
-                                {pr.referenceRangeDisplay || '—'}
-                              </td>
-                              <td className="py-1.5 text-slate-700">{pr.parameter.unit || ''}</td>
-
-                              {showAmendColumn && (
-                                <td className="py-1.5 text-center print:hidden">
-                                  {pr.result && (
-                                    <button
-                                      type="button"
-                                      onClick={() => onOpenAmendment!(pr.result!.id)}
-                                      className="text-[12px] font-medium text-[#0F766E] hover:text-[#115E59] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded-sm"
-                                    >
-                                      Amend
-                                    </button>
+                                <td
+                                  className={`py-1.5 pr-3 tabular-nums ${
+                                    abnormal ? 'font-bold' : 'font-medium'
+                                  }`}
+                                >
+                                  {pr.result ? (
+                                    <>
+                                      {pr.result.result_value}
+                                      {isCritical && (
+                                        <span className="ml-2 border border-black px-1 text-[10px] font-bold uppercase">
+                                          Critical
+                                        </span>
+                                      )}
+                                      {isHigh && <span className="ml-2 text-[11px]">H</span>}
+                                      {isLow && <span className="ml-2 text-[11px]">L</span>}
+                                    </>
+                                  ) : (
+                                    <span className="font-normal italic text-slate-500">Pending</span>
                                   )}
                                 </td>
-                              )}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </section>
-                ))}
+
+                                <td className="py-1.5 pr-3 text-slate-700">
+                                  {pr.referenceRangeDisplay || '—'}
+                                </td>
+                                <td className="py-1.5 text-slate-700">{pr.parameter.unit || ''}</td>
+
+                                {showAmendColumn && (
+                                  <td className="py-1.5 text-center print:hidden">
+                                    {pr.result && (
+                                      <button
+                                        type="button"
+                                        onClick={() => onOpenAmendment!(pr.result!.id)}
+                                        className="text-[12px] font-medium text-[#0F766E] hover:text-[#115E59] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded-sm"
+                                      >
+                                        Amend
+                                      </button>
+                                    )}
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </section>
+                  );
+                })}
               </div>
 
               {/* Computer generated disclaimer footer */}
@@ -358,6 +377,72 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Report Edit & Audit History Modal */}
+      {showHistoryModal && (
+        <div
+          className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:hidden"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-lg border border-[#E2E8F0] shadow-2xl w-full max-w-lg overflow-hidden text-[#1F2937]">
+            <div className="px-5 py-3.5 border-b border-[#E2E8F0] flex items-center justify-between bg-[#F8FAFC]">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-[#0F766E]" />
+                <h3 className="text-sm font-semibold">Report Audit & Edit History</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="p-1 rounded-md text-[#64748B] hover:bg-[#E2E8F0] hover:text-[#1F2937]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+              {reportData?.editHistory && reportData.editHistory.length > 0 ? (
+                <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                  {reportData.editHistory.map((entry, idx) => (
+                    <div key={idx} className="relative">
+                      <div
+                        className={`absolute -left-6 top-1 w-2.5 h-2.5 rounded-full border-2 border-white ${
+                          entry.isInitial ? 'bg-[#0F766E]' : 'bg-amber-600'
+                        }`}
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-slate-900">
+                            {entry.isInitial
+                              ? `Report created by ${entry.operatorName}`
+                              : `Edited by ${entry.operatorName}`}
+                          </span>
+                          {!entry.isInitial && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                              Revision {entry.version}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {formatDateTime(entry.date)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">No edit history recorded yet.</p>
+              )}
+            </div>
+
+            <div className="px-5 py-3 border-t border-[#E2E8F0] flex justify-end bg-[#F8FAFC]">
+              <Button size="sm" variant="outline" onClick={() => setShowHistoryModal(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

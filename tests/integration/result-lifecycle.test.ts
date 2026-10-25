@@ -167,7 +167,12 @@ describe('Integration: Laboratory Result Entry & Verification Lifecycle', () => 
 
     const orderItemId = visit.orderItems[0].id;
 
-    // Only enter 1 of 2 parameters
+    // Attempting to finalize with zero entered results MUST fail
+    expect(() => {
+      resultRepo.finalizeReport({ visitId: visit.visit.id }, operatorId);
+    }).toThrow(/has no entered results. Please enter at least one value for every test/);
+
+    // Entering at least 1 of 2 parameters permits finalization per clinical workflow
     resultRepo.saveDraftResults(
       {
         orderItemId,
@@ -176,13 +181,11 @@ describe('Integration: Laboratory Result Entry & Verification Lifecycle', () => 
       operatorId
     );
 
-    // Attempting to finalize MUST fail
-    expect(() => {
-      resultRepo.finalizeReport({ visitId: visit.visit.id }, operatorId);
-    }).toThrow(/Cannot finalize report: Result for required parameter/);
+    const snapshot = resultRepo.finalizeReport({ visitId: visit.visit.id }, operatorId);
+    expect(snapshot.status).toBe('finalized');
   });
 
-  it('finalizes complete report, creates immutable snapshot with SHA-256 hash, and prevents silent edits', () => {
+  it('finalizes complete report, creates immutable snapshot with SHA-256 hash, and allows versioned editing', () => {
     const patient = patientRepo.createPatient({ fullName: 'Ayesha Malik', gender: 'female' });
     const glucoseTest = catalogRepo.createTest(
       {
@@ -246,16 +249,22 @@ describe('Integration: Laboratory Result Entry & Verification Lifecycle', () => 
     const reloadedWorklist = resultRepo.getWorklist({ query: visit.visit.visit_number });
     expect(reloadedWorklist[0].orderItemStatus).toBe('completed');
 
-    // Attempting to silently edit draft after finalization MUST fail
-    expect(() => {
-      resultRepo.saveDraftResults(
-        {
-          orderItemId,
-          results: [{ parameterId: glucoseParamId, resultValue: '95.0' }],
-        },
-        operatorId
-      );
-    }).toThrow(/already been finalized/);
+    // Editing results after finalization is permitted and tracks revisions
+    resultRepo.saveDraftResults(
+      {
+        orderItemId,
+        results: [{ parameterId: glucoseParamId, resultValue: '95.0' }],
+      },
+      operatorId
+    );
+
+    // Re-finalizing creates revision 2 and tracks editor information
+    const snapshotV2 = resultRepo.finalizeReport({ visitId: visit.visit.id }, operatorId);
+    expect(snapshotV2.version).toBe(2);
+
+    const fullReport = resultRepo.getFullDiagnosticReport(visit.visit.id);
+    expect(fullReport.editorInfo?.isEdited).toBe(true);
+    expect(fullReport.editorInfo?.version).toBe(2);
   });
 
   it('permits formal clinical amendments on finalized results with mandatory reason and version bump', () => {

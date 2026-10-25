@@ -9,12 +9,10 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Alert } from '../../components/common/Alert';
-import { formatDateTime } from '../../lib/utils';
 import {
   Terminal,
   KeyRound,
   RotateCcw,
-  ShieldAlert,
   Copy,
   Check,
   RefreshCw,
@@ -24,8 +22,6 @@ import {
   Lock,
   ArrowLeft,
   Activity,
-  HardDrive,
-  Database,
 } from 'lucide-react';
 
 import { LegacyTestImporterCard } from './LegacyTestImporterCard';
@@ -165,12 +161,6 @@ export const DeveloperPortalView: React.FC<DeveloperPortalViewProps> = ({ onNavi
     } finally {
       setIsRestoring(false);
     }
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
   // Gate Modal if not authenticated

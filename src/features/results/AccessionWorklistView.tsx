@@ -149,21 +149,25 @@ export const AccessionWorklistView: React.FC = () => {
 
     // Overall status for each visit
     for (const visit of visitMap.values()) {
-      const allFinalized =
+      // Every test in the visit must have at least one parameter entered
+      const allTestsHaveResults =
         visit.tests.length > 0 &&
+        visit.tests.every((t) => t.parametersEntered > 0);
+
+      const allFinalized =
+        allTestsHaveResults &&
         visit.tests.every((t) => t.orderItemStatus === 'completed' || t.resultStatus === 'finalized');
+
       const anyReviewed = visit.tests.some((t) => t.resultStatus === 'reviewed');
-      const anyDraftOrEntered = visit.tests.some(
-        (t) => t.resultStatus === 'draft' || (t.parametersEntered > 0 && t.orderItemStatus !== 'completed')
-      );
 
       if (allFinalized) {
         visit.overallStatus = 'finalized';
       } else if (anyReviewed) {
         visit.overallStatus = 'reviewed';
-      } else if (anyDraftOrEntered) {
+      } else if (allTestsHaveResults) {
         visit.overallStatus = 'draft';
       } else {
+        // If any test in the visit has zero entered results, keep visit as pending
         visit.overallStatus = 'pending';
       }
     }
@@ -435,8 +439,9 @@ export const AccessionWorklistView: React.FC = () => {
                                 type="button"
                                 className={smallBtn}
                                 onClick={() => handleOpenVisitResults(visit)}
+                                title="Edit results or update report"
                               >
-                                Details
+                                Edit results
                               </button>
                             </>
                           )}

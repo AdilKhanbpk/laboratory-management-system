@@ -48,6 +48,7 @@ export const IPC_CHANNELS = {
 
   // Visits & Orders
   VISITS_CREATE: 'visits:create',
+  VISITS_UPDATE_ORDER_INVOICE: 'visits:update-order-invoice',
   VISITS_GET_BY_ID: 'visits:get-by-id',
   VISITS_SEARCH: 'visits:search',
   VISITS_GET_PATIENT_HISTORY: 'visits:get-patient-history',

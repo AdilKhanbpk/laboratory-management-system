@@ -78,7 +78,13 @@ export class PdfService {
 
     const testsHtml = reportData.tests
       .map((testEntry) => {
-        const rowsHtml = testEntry.results
+        const filledResults = testEntry.results.filter(
+          (pr) => pr.result && pr.result.result_value != null && pr.result.result_value.trim() !== ''
+        );
+
+        if (filledResults.length === 0) return '';
+
+        const rowsHtml = filledResults
           .map((pr) => {
             const flag = pr.flag;
             const isCritical = flag === 'critical';
@@ -95,9 +101,7 @@ export class PdfService {
               flagBadge = '<span class="badge-low">L</span>';
             }
 
-            const valDisplay = pr.result
-              ? `<span class="${abnormal ? 'val-abnormal' : 'val-normal'}">${escapeHtml(pr.result.result_value)}</span>${flagBadge}`
-              : '<span class="val-pending">Pending</span>';
+            const valDisplay = `<span class="${abnormal ? 'val-abnormal' : 'val-normal'}">${escapeHtml(pr.result!.result_value)}</span>${flagBadge}`;
 
             return `
               <tr>
@@ -132,6 +136,7 @@ export class PdfService {
           </div>
         `;
       })
+      .filter(Boolean)
       .join('');
 
     return `<!DOCTYPE html>

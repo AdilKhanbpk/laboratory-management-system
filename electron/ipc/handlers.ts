@@ -27,6 +27,7 @@ import {
   CreateTestSchema,
   UpdateTestSchema,
   CreateVisitOrderSchema,
+  UpdateVisitOrderAndInvoiceSchema,
   RecordPaymentSchema,
   DoctorStatsQuerySchema,
   SaveDraftResultsSchema,
@@ -912,6 +913,23 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       return { success: true, data: detail };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to register visit and create order.' };
+    }
+  });
+
+  // 28b. Update Visit, Order Items, and Invoice
+  ipcMain.handle(IPC_CHANNELS.VISITS_UPDATE_ORDER_INVOICE, async (_, rawInput: unknown): Promise<IpcResponse<VisitDetail>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized. Please log in.' };
+      const parsed = UpdateVisitOrderAndInvoiceSchema.safeParse(rawInput);
+      if (!parsed.success) {
+        const msg = parsed.error.issues.map((i) => i.message).join(' ');
+        return { success: false, error: msg };
+      }
+
+      const detail = ctx.visitRepo.updateVisitOrderAndInvoice(parsed.data, currentSession.user.id);
+      return { success: true, data: detail };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to update order and invoice.' };
     }
   });
 
