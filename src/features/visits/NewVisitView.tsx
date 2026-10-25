@@ -746,6 +746,7 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
   // --- Patient details (entered directly at bill creation) ---
   const [patientName, setPatientName] = useState('');
   const [patientAge, setPatientAge] = useState('');
+  const [patientAgeMonths, setPatientAgeMonths] = useState('');
   const [patientGender, setPatientGender] = useState<'male' | 'female' | 'other'>('male');
   const [patientPhone, setPatientPhone] = useState('');
 
@@ -846,6 +847,7 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
   const handleResetForm = useCallback(() => {
     setPatientName('');
     setPatientAge('');
+    setPatientAgeMonths('');
     setPatientGender('male');
     setPatientPhone('');
     setSelectedDoctorId(null);
@@ -865,6 +867,11 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
       return;
     }
 
+    if (!patientAge.trim() && !patientAgeMonths.trim()) {
+      setServerError('Please enter the patient age (years and/or months).');
+      return;
+    }
+
     if (selectedTests.length === 0) {
       setServerError('Please select at least one laboratory test for this visit.');
       return;
@@ -878,10 +885,17 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
     setIsSubmitting(true);
     try {
       let calculatedDob: string | undefined = undefined;
-      const ageNum = parseInt(patientAge.trim(), 10);
-      if (!isNaN(ageNum) && ageNum >= 0 && ageNum <= 130) {
+      const yearsNum = parseInt(patientAge.trim(), 10);
+      const monthsNum = parseInt(patientAgeMonths.trim(), 10);
+      const hasYears = !isNaN(yearsNum) && yearsNum >= 0 && yearsNum <= 130;
+      const hasMonths = !isNaN(monthsNum) && monthsNum >= 0 && monthsNum <= 11;
+
+      if (hasYears || hasMonths) {
+        const y = hasYears ? yearsNum : 0;
+        const m = hasMonths ? monthsNum : 0;
         const d = new Date();
-        d.setFullYear(d.getFullYear() - ageNum);
+        d.setFullYear(d.getFullYear() - y);
+        d.setMonth(d.getMonth() - m);
         calculatedDob = d.toISOString().split('T')[0];
       }
 
@@ -969,16 +983,33 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
               </div>
 
               <div className="sm:col-span-3">
-                <Label htmlFor="patientAge" required>Age (years)</Label>
-                <input
-                  id="patientAge"
-                  type="number"
-                  min="0"
-                  max="125"
-                  className={inputClass}
-                  value={patientAge}
-                  onChange={(e) => setPatientAge(e.target.value)}
-                />
+                <Label htmlFor="patientAge" required>Age (Years &amp; Months)</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <input
+                      id="patientAge"
+                      type="number"
+                      min="0"
+                      max="130"
+                      placeholder="Years"
+                      className={inputClass}
+                      value={patientAge}
+                      onChange={(e) => setPatientAge(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <input
+                      id="patientAgeMonths"
+                      type="number"
+                      min="0"
+                      max="11"
+                      placeholder="Months"
+                      className={inputClass}
+                      value={patientAgeMonths}
+                      onChange={(e) => setPatientAgeMonths(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="sm:col-span-3">

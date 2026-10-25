@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import './ReportTemplateDesigner.css';
 import type { ReportTemplate } from '../../types';
-import { Palette, CheckCircle2, AlertCircle, Plus, Trash2, Printer, RefreshCw } from 'lucide-react';
+import { Palette, CheckCircle2, AlertCircle, Plus, Trash2, Printer, RefreshCw, Download } from 'lucide-react';
 
 const DEFAULT_TEMPLATE: ReportTemplate = {
   id: 'al-shifa-default',
@@ -84,6 +84,44 @@ export const ReportTemplateDesignerView: React.FC = () => {
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sampleRows, setSampleRows] = useState(SAMPLE_RESULTS);
+  const [isPrintingTest, setIsPrintingTest] = useState(false);
+  const [isExportingTestPdf, setIsExportingTestPdf] = useState(false);
+
+  const handlePrintTest = async () => {
+    setIsPrintingTest(true);
+    try {
+      if (window.electronAPI?.templates?.printTest) {
+        const res = await window.electronAPI.templates.printTest(draft);
+        if (!res.success && res.error) {
+          setNotice({ type: 'error', text: res.error });
+        }
+      } else {
+        window.print();
+      }
+    } catch (err: any) {
+      setNotice({ type: 'error', text: err?.message || 'Print failed.' });
+    } finally {
+      setIsPrintingTest(false);
+    }
+  };
+
+  const handleExportTestPdf = async () => {
+    setIsExportingTestPdf(true);
+    try {
+      if (window.electronAPI?.templates?.exportPdfTest) {
+        const res = await window.electronAPI.templates.exportPdfTest(draft);
+        if (res.success && (res.data as any)?.filePath) {
+          setNotice({ type: 'success', text: `Sample PDF saved to ${(res.data as any).filePath}` });
+        } else if (!res.success && res.error) {
+          setNotice({ type: 'error', text: res.error });
+        }
+      }
+    } catch (err: any) {
+      setNotice({ type: 'error', text: err?.message || 'PDF export failed.' });
+    } finally {
+      setIsExportingTestPdf(false);
+    }
+  };
 
   const loadTemplatesFromDatabase = useCallback(async () => {
     setIsLoading(true);
@@ -673,10 +711,26 @@ export const ReportTemplateDesignerView: React.FC = () => {
               <strong>Live Print Preview</strong>
               <span> · Standard A4 Pathology Sheet</span>
             </div>
-            <div>
-              <button type="button" className="lrtd-btn secondary text-xs" onClick={() => window.print()}>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="lrtd-btn secondary text-xs"
+                onClick={handleExportTestPdf}
+                disabled={isExportingTestPdf || isPrintingTest}
+                title="Save the sample test report as a PDF file"
+              >
+                <Download className="w-3.5 h-3.5 inline mr-1" />
+                {isExportingTestPdf ? 'Exporting…' : 'Save as PDF'}
+              </button>
+              <button
+                type="button"
+                className="lrtd-btn primary text-xs"
+                onClick={handlePrintTest}
+                disabled={isPrintingTest || isExportingTestPdf}
+                title="Print this report using the native printer dialog"
+              >
                 <Printer className="w-3.5 h-3.5 inline mr-1" />
-                Print test
+                {isPrintingTest ? 'Printing…' : 'Print test'}
               </button>
             </div>
           </div>
@@ -689,14 +743,15 @@ export const ReportTemplateDesignerView: React.FC = () => {
               fontSize: `${draft.style.fontSize}px`,
             }}
           >
-            {/* Header Banner */}
-            <header
-              className="lrtd-report-header"
-              style={{
-                background: draft.header.color,
-                textAlign: draft.header.align,
-              }}
-            >
+            <div className="lrtd-paper-content">
+              {/* Header Banner */}
+              <header
+                className="lrtd-report-header"
+                style={{
+                  background: draft.header.color,
+                  textAlign: draft.header.align,
+                }}
+              >
               {draft.header.showLogo && draft.header.logoDataUrl && (
                 <img className="lrtd-logo" src={draft.header.logoDataUrl} alt="Hospital Logo" />
               )}
@@ -805,6 +860,7 @@ export const ReportTemplateDesignerView: React.FC = () => {
                 </div>
               </section>
             )}
+            </div>
 
             {/* Bottom Footer Banner */}
             {draft.footer.visible && (

@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog } from 'electron';
 import fs from 'fs';
-import { FullDiagnosticReport } from '../types/ipc';
+import { FullDiagnosticReport, ReportTemplate, HospitalSettings } from '../types/ipc';
 import { DEFAULT_REPORT_TEMPLATE } from '../database/repositories/template-repository';
 
 function escapeHtml(str: string | null | undefined): string {
@@ -47,8 +47,8 @@ function formatAge(dobString: string | null | undefined): string {
       years--;
       months += 12;
     }
-    if (years > 0) return `${years} Yrs`;
-    if (months > 0) return `${months} Months`;
+    if (years > 0) return `${years} Yrs${months > 0 ? ` ${months} Mo` : ''}`;
+    if (months > 0) return `${months} Months${days > 0 ? ` ${days} Days` : ''}`;
     return `${Math.max(1, days)} Days`;
   } catch {
     return 'Age not recorded';
@@ -158,7 +158,7 @@ export class PdfService {
           <span>Date: <b>${formatReportDate(visit.order_date)}</b></span>
           <span>Report No.: <b>${escapeHtml(snapshot?.report_number || `REP-${visit.visit_number}`)}</b></span>
           <span>C/O No.: <b>${escapeHtml(patient.patient_mrn)}</b></span>
-          <span>S/O, D/O, W/O: <b>—</b></span>
+          <span>Phone: <b>—</b></span>
           <span>Referring Physician: <b>${escapeHtml(reportData.doctor?.full_name || header.supervisor || 'Dr. Saad Khan')}</b></span>
         </div>
       </div>
@@ -508,5 +508,168 @@ export class PdfService {
         error: err?.message || 'Failed to generate PDF document.',
       };
     }
+  }
+
+  /**
+   * Prints the diagnostic report directly to the printer using Electron's native print dialog
+   * rendering the exact same HTML template as the PDF.
+   */
+  public static async printReport(
+    reportData: FullDiagnosticReport
+  ): Promise<{ success: boolean; cancelled?: boolean; error?: string }> {
+    return new Promise(async (resolve) => {
+      let printWindow: BrowserWindow | null = null;
+      try {
+        const html = this.generateReportHtml(reportData);
+
+        printWindow = new BrowserWindow({
+          show: false,
+          width: 800,
+          height: 1100,
+          webPreferences: {
+            offscreen: true,
+          },
+        });
+
+        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+
+        // Allow 350ms for layout, web fonts, and images to render completely
+        await new Promise((r) => setTimeout(r, 350));
+
+        printWindow.webContents.print(
+          {
+            silent: false,
+            printBackground: true,
+            color: true,
+          },
+          (success, failureReason) => {
+            if (printWindow && !printWindow.isDestroyed()) {
+              printWindow.destroy();
+            }
+            if (!success) {
+              if (failureReason === 'cancelled' || failureReason === 'Print job canceled') {
+                resolve({ success: false, cancelled: true });
+              } else {
+                resolve({ success: false, error: failureReason || 'Print failed.' });
+              }
+            } else {
+              resolve({ success: true });
+            }
+          }
+        );
+      } catch (err: any) {
+        if (printWindow && !printWindow.isDestroyed()) {
+          printWindow.destroy();
+        }
+        console.error('Print report error:', err);
+        resolve({ success: false, error: err?.message || 'Failed to print report.' });
+      }
+    });
+  }
+
+  /**
+   * Creates a sample diagnostic report populated with the given template design
+   * for testing print and PDF generation in the template designer.
+   */
+  public static createSampleReport(
+    template: ReportTemplate,
+    hospital?: HospitalSettings | null
+  ): FullDiagnosticReport {
+    return {
+      visit: {
+        id: 1,
+        visit_number: '2026-00042',
+        patient_id: 1,
+        referring_doctor_id: 1,
+        order_date: new Date().toISOString(),
+        status: 'completed',
+        operator_id: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      patient: {
+        id: 1,
+        patient_mrn: 'PAT-2026-00042',
+        full_name: 'Muhammad Ali',
+        date_of_birth: '1994-05-15',
+        gender: 'male',
+        phone_number: '0300-1234567',
+        address: null,
+        notes: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      doctor: {
+        id: 1,
+        full_name: template.header.supervisor || 'Dr. Saad Khan',
+        specialization: 'Pathologist',
+        phone_number: template.header.mobile || '0315-1996504',
+        clinic_hospital_name: null,
+        address: null,
+        notes: null,
+        is_active: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      hospital: hospital || {
+        id: 1,
+        hospital_name: template.header.hospitalName || 'AL-SHIFA MEDICAL CENTER',
+        tagline: null,
+        address: template.header.address || 'Peshawar Swabi Road, Mohalla Panch Paao, Kohat',
+        phone_primary: template.header.phone || '0938-281507',
+        phone_secondary: template.header.mobile || '0315-1996504',
+        email: 'info@alshifalab.com',
+        logo_relative_path: null,
+        logo_url: template.header.logoDataUrl || undefined,
+        currency_code: 'PKR',
+        timezone: 'Asia/Karachi',
+        inactivity_timeout_minutes: 15,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      tests: [
+        {
+          orderItem: {
+            id: 1,
+            visit_id: 1,
+            test_id: 101,
+            test_name_snapshot: 'Complete Blood Picture (CP)',
+            test_code_snapshot: 'CBC',
+            price_snapshot: 80000,
+            quantity: 1,
+            subtotal_amount: 80000,
+            status: 'completed',
+            created_at: new Date().toISOString(),
+          },
+          results: [
+            {
+              parameter: { id: 1, name: 'Hemoglobin (Hb)', unit: 'g/dL', type: 'numeric', displayOrder: 1 },
+              result: { id: 1, order_item_id: 1, parameter_id: 1, numeric_value: 14.2, result_value: '14.2', unit_snapshot: 'g/dL', reference_range_display: '13.0 - 17.0 g/dL', flag: 'normal', status: 'finalized', entered_by: 1, entered_at: new Date().toISOString(), version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+              flag: 'normal',
+              referenceRangeDisplay: '13.0 - 17.0 g/dL',
+            },
+            {
+              parameter: { id: 2, name: 'Total Leukocyte Count (TLC)', unit: 'x10^9/L', type: 'numeric', displayOrder: 2 },
+              result: { id: 2, order_item_id: 1, parameter_id: 2, numeric_value: 12.1, result_value: '12.1', unit_snapshot: 'x10^9/L', reference_range_display: '4.0 - 11.0 x10^9/L', flag: 'high', status: 'finalized', entered_by: 1, entered_at: new Date().toISOString(), version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+              flag: 'high',
+              referenceRangeDisplay: '4.0 - 11.0 x10^9/L',
+            },
+            {
+              parameter: { id: 3, name: 'Platelet Count', unit: 'x10^9/L', type: 'numeric', displayOrder: 3 },
+              result: { id: 3, order_item_id: 1, parameter_id: 3, numeric_value: 250, result_value: '250', unit_snapshot: 'x10^9/L', reference_range_display: '150 - 400 x10^9/L', flag: 'normal', status: 'finalized', entered_by: 1, entered_at: new Date().toISOString(), version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+              flag: 'normal',
+              referenceRangeDisplay: '150 - 400 x10^9/L',
+            },
+            {
+              parameter: { id: 4, name: 'Blood Glucose (Fasting)', unit: 'mg/dL', type: 'numeric', displayOrder: 4 },
+              result: { id: 4, order_item_id: 1, parameter_id: 4, numeric_value: 95, result_value: '95', unit_snapshot: 'mg/dL', reference_range_display: '70 - 100 mg/dL', flag: 'normal', status: 'finalized', entered_by: 1, entered_at: new Date().toISOString(), version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+              flag: 'normal',
+              referenceRangeDisplay: '70 - 100 mg/dL',
+            },
+          ],
+        },
+      ],
+      template,
+    };
   }
 }

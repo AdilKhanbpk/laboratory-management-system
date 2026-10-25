@@ -2,6 +2,7 @@ import { ipcMain, app, BrowserWindow, dialog } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { IPC_CHANNELS } from './channels';
+import { z } from 'zod';
 import {
   detectLegacyTestCatalog,
   importLegacyTestsToActiveDatabase,
@@ -1156,6 +1157,28 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
     }
   });
 
+  // 41b. Print Local Diagnostic Report via Native Windows Print Window
+  ipcMain.handle(IPC_CHANNELS.REPORTS_PRINT, async (_, rawInput: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = z.object({ visitId: z.number().int().positive() }).safeParse(rawInput);
+      if (!parsed.success) {
+        return { success: false, error: 'Invalid visit ID for print.' };
+      }
+
+      const reportData = ctx.resultRepo.getFullDiagnosticReport(parsed.data.visitId);
+      if (reportData.hospital) {
+        reportData.hospital = attachLogoUrl(reportData.hospital, ctx.logoService) || reportData.hospital;
+      }
+      reportData.template = ctx.templateRepo.getActiveTemplate();
+
+      const printRes = await PdfService.printReport(reportData);
+      return printRes;
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to print report.' };
+    }
+  });
+
   // 42. Get Comprehensive Patient History
   ipcMain.handle(IPC_CHANNELS.PATIENTS_GET_FULL_HISTORY, async (_, patientId: unknown): Promise<IpcResponse<PatientHistoryItem[]>> => {
     try {
@@ -1554,6 +1577,45 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       return { success: true, data: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to delete report template.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TEMPLATES_PRINT_TEST, async (_, rawInput: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const { template } = (rawInput as any) || {};
+      if (!template) return { success: false, error: 'Template data is required.' };
+
+      let hospital = ctx.hospitalRepo.getSettings();
+      if (hospital) {
+        hospital = attachLogoUrl(hospital, ctx.logoService) || hospital;
+      }
+      const sample = PdfService.createSampleReport(template, hospital);
+      const printRes = await PdfService.printReport(sample);
+      return printRes;
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to print test report.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TEMPLATES_EXPORT_PDF_TEST, async (_, rawInput: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const { template } = (rawInput as any) || {};
+      if (!template) return { success: false, error: 'Template data is required.' };
+
+      const mainWindow = ctx.getMainWindow ? ctx.getMainWindow() : null;
+      if (!mainWindow) return { success: false, error: 'Window not available.' };
+
+      let hospital = ctx.hospitalRepo.getSettings();
+      if (hospital) {
+        hospital = attachLogoUrl(hospital, ctx.logoService) || hospital;
+      }
+      const sample = PdfService.createSampleReport(template, hospital);
+      const exportRes = await PdfService.exportReportPdf(mainWindow, sample, 'Sample_Diagnostic_Report.pdf');
+      return exportRes;
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to export test report PDF.' };
     }
   });
 

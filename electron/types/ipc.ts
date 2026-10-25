@@ -801,6 +801,7 @@ export interface ElectronAPI {
   reports: {
     getDiagnosticReport: (visitId: number) => Promise<IpcResponse<FullDiagnosticReport>>;
     exportPdf: (input: ExportPdfInput) => Promise<IpcResponse<{ success: boolean; filePath?: string }>>;
+    print: (visitId: number) => Promise<IpcResponse<any>>;
     getDoctorStats: (query?: DoctorStatsQuery) => Promise<IpcResponse<DoctorReferralStats[]>>;
   };
   patientHistory: {
@@ -837,6 +838,8 @@ export interface ElectronAPI {
     save: (template: ReportTemplate) => Promise<IpcResponse<ReportTemplate>>;
     activate: (id: string) => Promise<IpcResponse<boolean>>;
     delete: (id: string) => Promise<IpcResponse<boolean>>;
+    printTest: (template: ReportTemplate) => Promise<IpcResponse<any>>;
+    exportPdfTest: (template: ReportTemplate) => Promise<IpcResponse<{ success: boolean; filePath?: string }>>;
   };
   app: {
     getInfo: () => Promise<IpcResponse<AppInfo>>;

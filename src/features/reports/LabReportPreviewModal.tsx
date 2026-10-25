@@ -28,6 +28,7 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [exportStatus, setExportStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
@@ -38,6 +39,7 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
       setReportData(null);
       setExportStatus(null);
       setLoadError(null);
+      setIsPrinting(false);
       return;
     }
 
@@ -79,7 +81,24 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handlePrint = () => window.print();
+  const handlePrint = async () => {
+    if (!visitId || !reportData) return;
+    setIsPrinting(true);
+    try {
+      if (window.electronAPI?.reports?.print) {
+        const res = await window.electronAPI.reports.print(visitId);
+        if (!res.success && res.error) {
+          setExportStatus({ type: 'error', text: res.error });
+        }
+      } else {
+        window.print();
+      }
+    } catch (err: any) {
+      setExportStatus({ type: 'error', text: err?.message || 'Print failed.' });
+    } finally {
+      setIsPrinting(false);
+    }
+  };
 
   const handleExportPdf = async () => {
     if (!visitId || !reportData) return;
@@ -159,6 +178,7 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
               size="sm"
               variant="primary"
               onClick={handlePrint}
+              isLoading={isPrinting}
               disabled={!reportData}
               className="bg-[#0F766E] hover:bg-[#115E59]"
             >

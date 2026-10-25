@@ -30,6 +30,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
     handleSubmit,
     watch,
     reset,
+    setValue,
     formState: { errors, isDirty },
   } = useForm<CreatePatientInput>({
     resolver: zodResolver(CreatePatientSchema),
@@ -48,6 +49,42 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
   const watchedPhone = watch('phoneNumber');
 
   const derivedAge = calculateAge(watchedDob);
+
+  const [quickYears, setQuickYears] = useState('');
+  const [quickMonths, setQuickMonths] = useState('');
+
+  useEffect(() => {
+    if (watchedDob) {
+      const a = calculateAge(watchedDob);
+      if (a) {
+        setQuickYears(a.years > 0 ? String(a.years) : '');
+        setQuickMonths(a.months > 0 ? String(a.months) : '');
+      } else {
+        setQuickYears('');
+        setQuickMonths('');
+      }
+    } else {
+      setQuickYears('');
+      setQuickMonths('');
+    }
+  }, [watchedDob]);
+
+  const handleQuickAgeChange = (yearsStr: string, monthsStr: string) => {
+    setQuickYears(yearsStr);
+    setQuickMonths(monthsStr);
+    const y = parseInt(yearsStr.trim(), 10);
+    const m = parseInt(monthsStr.trim(), 10);
+    const hasY = !isNaN(y) && y >= 0;
+    const hasM = !isNaN(m) && m >= 0;
+    if (hasY || hasM) {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - (hasY ? y : 0));
+      d.setMonth(d.getMonth() - (hasM ? m : 0));
+      setValue('dateOfBirth', d.toISOString().split('T')[0], { shouldDirty: true });
+    } else if (!yearsStr && !monthsStr) {
+      setValue('dateOfBirth', '', { shouldDirty: true });
+    }
+  };
 
   // Reset form when modal opens or patientToEdit changes
   useEffect(() => {
@@ -231,7 +268,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
               {errors.gender && <p className="mt-1 text-xs text-red-600 font-medium">{errors.gender.message}</p>}
             </div>
 
-            {/* Date of Birth */}
+            {/* Date of Birth & Quick Age */}
             <div>
               <Input
                 type="date"
@@ -240,6 +277,33 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
                 helperText={derivedAge ? `Calculated Age: ${derivedAge.formatted}` : 'Leave empty if unknown'}
                 {...register('dateOfBirth')}
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Age (Years &amp; Months)
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="130"
+                  placeholder="Years"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-500 transition-colors"
+                  value={quickYears}
+                  onChange={(e) => handleQuickAgeChange(e.target.value, quickMonths)}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="11"
+                  placeholder="Months"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-500 transition-colors"
+                  value={quickMonths}
+                  onChange={(e) => handleQuickAgeChange(quickYears, e.target.value)}
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Auto-sets date of birth</p>
             </div>
 
             {/* Phone */}

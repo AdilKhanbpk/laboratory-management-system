@@ -68,6 +68,7 @@ export const IPC_CHANNELS = {
   // Diagnostic Reports & Printing
   REPORTS_GET_DIAGNOSTIC_REPORT: 'reports:get-diagnostic-report',
   REPORTS_EXPORT_PDF: 'reports:export-pdf',
+  REPORTS_PRINT: 'reports:print',
   REPORTS_DOCTOR_STATS: 'reports:doctor-stats',
 
   // Patient Comprehensive History
@@ -102,6 +103,8 @@ export const IPC_CHANNELS = {
   TEMPLATES_SAVE: 'templates:save',
   TEMPLATES_ACTIVATE: 'templates:activate',
   TEMPLATES_DELETE: 'templates:delete',
+  TEMPLATES_PRINT_TEST: 'templates:print-test',
+  TEMPLATES_EXPORT_PDF_TEST: 'templates:export-pdf-test',
 
   // System & App
   APP_GET_INFO: 'app:get-info',

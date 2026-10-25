@@ -34,3 +34,25 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
+
+/* Global Print Rules: Hide app chrome and allow crisp A4 printing */
+@media print {
+  header,
+  aside,
+  nav,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  html,
+  body,
+  #root {
+    background: #ffffff !important;
+    height: auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}

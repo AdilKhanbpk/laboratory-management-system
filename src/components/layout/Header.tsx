@@ -148,7 +148,7 @@ export const Header: React.FC<HeaderProps> = ({ hospital, user, onLock, onLogout
   const dateStr = now.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 
   return (
-    <header className="h-14 bg-white border-b border-[#E2E8F0] px-5 flex items-center justify-between select-none shrink-0 z-20">
+    <header className="h-14 bg-white border-b border-[#E2E8F0] px-5 flex items-center justify-between select-none shrink-0 z-20 print:hidden">
       {/* Laboratory identity */}
       <div className="flex items-center gap-3 min-w-0">
         {hospital.logo_url ? (

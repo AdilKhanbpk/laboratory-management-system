@@ -80,11 +80,11 @@ export function calculateAge(dobString: string | null | undefined): {
 
   let formatted = '';
   if (years > 0) {
-    formatted = `${years} yr${years > 1 ? 's' : ''}${months > 0 ? ` ${months} mo` : ''}`;
+    formatted = `${years} Yrs${months > 0 ? ` ${months} Mo` : ''}`;
   } else if (months > 0) {
-    formatted = `${months} month${months > 1 ? 's' : ''}${days > 0 ? ` ${days} d` : ''}`;
+    formatted = `${months} Month${months > 1 ? 's' : ''}${days > 0 ? ` ${days} Day${days > 1 ? 's' : ''}` : ''}`;
   } else {
-    formatted = `${days} day${days !== 1 ? 's' : ''}`;
+    formatted = `${days} Day${days !== 1 ? 's' : ''}`;
   }
 
   return { years, months, days, formatted };

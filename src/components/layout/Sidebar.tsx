@@ -66,8 +66,8 @@ const navGroups: NavGroup[] = [
     title: 'Laboratory',
     items: [
       { id: 'results', label: 'Specimens and results', icon: <FileCheck2 className="w-4 h-4" /> },
-      { id: 'tests', label: 'Test catalog', icon: <FlaskConical className="w-4 h-4" /> },
       { id: 'doctors', label: 'Referring doctors', icon: <Stethoscope className="w-4 h-4" /> },
+      { id: 'tests', label: 'Test catalog', icon: <FlaskConical className="w-4 h-4" /> },
       { id: 'report-designer', label: 'Report design', icon: <Palette className="w-4 h-4" /> },
     ],
   },
@@ -114,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside
       className={cn(
-        'bg-[#111827] flex flex-col shrink-0 select-none border-r border-white/10 transition-[width] duration-200',
+        'bg-[#111827] flex flex-col shrink-0 select-none border-r border-white/10 transition-[width] duration-200 print:hidden',
         isCollapsed ? 'w-16' : 'w-60'
       )}
     >

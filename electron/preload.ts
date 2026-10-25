@@ -87,6 +87,7 @@ const CHANNELS = {
   // Reports & Printing
   REPORTS_GET_DIAGNOSTIC_REPORT: 'reports:get-diagnostic-report',
   REPORTS_EXPORT_PDF: 'reports:export-pdf',
+  REPORTS_PRINT: 'reports:print',
   REPORTS_DOCTOR_STATS: 'reports:doctor-stats',
 
   // Patient Comprehensive History
@@ -121,6 +122,8 @@ const CHANNELS = {
   TEMPLATES_SAVE: 'templates:save',
   TEMPLATES_ACTIVATE: 'templates:activate',
   TEMPLATES_DELETE: 'templates:delete',
+  TEMPLATES_PRINT_TEST: 'templates:print-test',
+  TEMPLATES_EXPORT_PDF_TEST: 'templates:export-pdf-test',
 
   // System & App
   APP_GET_INFO: 'app:get-info',
@@ -199,6 +202,7 @@ const api: ElectronAPI = {
   reports: {
     getDiagnosticReport: (visitId: number) => ipcRenderer.invoke(CHANNELS.REPORTS_GET_DIAGNOSTIC_REPORT, visitId),
     exportPdf: (input) => ipcRenderer.invoke(CHANNELS.REPORTS_EXPORT_PDF, input),
+    print: (visitId: number) => ipcRenderer.invoke(CHANNELS.REPORTS_PRINT, { visitId }),
     getDoctorStats: (query) => ipcRenderer.invoke(CHANNELS.REPORTS_DOCTOR_STATS, query),
   },
   patientHistory: {
@@ -235,6 +239,8 @@ const api: ElectronAPI = {
     save: (template: any) => ipcRenderer.invoke(CHANNELS.TEMPLATES_SAVE, template),
     activate: (id: string) => ipcRenderer.invoke(CHANNELS.TEMPLATES_ACTIVATE, id),
     delete: (id: string) => ipcRenderer.invoke(CHANNELS.TEMPLATES_DELETE, id),
+    printTest: (template: any) => ipcRenderer.invoke(CHANNELS.TEMPLATES_PRINT_TEST, { template }),
+    exportPdfTest: (template: any) => ipcRenderer.invoke(CHANNELS.TEMPLATES_EXPORT_PDF_TEST, { template }),
   },
   app: {
     getInfo: () => ipcRenderer.invoke(CHANNELS.APP_GET_INFO),

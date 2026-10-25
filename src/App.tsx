@@ -197,7 +197,7 @@ export const App: React.FC = () => {
   // 4. Main Authenticated Application Shell
   return (
     <ErrorBoundary>
-      <div className="h-screen w-screen flex flex-col bg-slate-100 overflow-hidden select-none">
+      <div className="h-screen w-screen flex flex-col bg-slate-100 overflow-hidden select-none print:h-auto print:w-auto print:overflow-visible print:bg-white print:block">
         {/* Header */}
         {hospital && user && (
           <Header
@@ -209,10 +209,10 @@ export const App: React.FC = () => {
         )}
 
         {/* Main Work Area: Sidebar + Content */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden print:overflow-visible print:block">
           <Sidebar activeTab={activeTab} onSelectTab={setActiveTab} user={user} />
 
-          <main className="flex-1 overflow-y-auto p-6 bg-slate-100">
+          <main className="flex-1 overflow-y-auto p-6 bg-slate-100 print:p-0 print:m-0 print:bg-white print:overflow-visible print:block">
             {activeTab === 'dashboard' && hospital && user && (
               <DashboardView
                 hospital={hospital}
