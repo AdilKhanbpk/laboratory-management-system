@@ -70,9 +70,9 @@ const SAMPLE_PATIENT = {
 };
 
 const SAMPLE_RESULTS: Array<Record<string, string>> = [
-  { testName: 'Hemoglobin (Hb)', result: '14.2', unit: 'g/dL', normalRange: 'M: 13.0 - 17.0 | F: 11.5 - 15.5', status: 'Normal' },
+  { testName: 'Hemoglobin (Hb)', result: '11.2', unit: 'g/dL', normalRange: 'M: 13.0 - 17.0 | F: 11.5 - 15.5', status: 'Low' },
   { testName: 'Total Leukocyte Count (TLC)', result: '12.1', unit: 'x10^9/L', normalRange: '4.0 - 11.0', status: 'High' },
-  { testName: 'Platelet Count', result: '250', unit: 'x10^9/L', normalRange: '150 - 400', status: 'Normal' },
+  { testName: 'Platelet Count', result: '18', unit: 'x10^9/L', normalRange: '150 - 400', status: 'Critical' },
   { testName: 'Blood Glucose (Fasting)', result: '95', unit: 'mg/dL', normalRange: '70 - 100', status: 'Normal' },
 ];
 

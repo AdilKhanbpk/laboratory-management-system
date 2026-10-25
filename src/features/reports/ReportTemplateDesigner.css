@@ -456,14 +456,26 @@
   font-weight: 700;
 }
 
-.lrtd-status.high,
-.lrtd-status.low,
-.lrtd-status.critical {
-  color: #b91c1c;
-}
-
 .lrtd-status.normal {
   color: #15803d;
+}
+
+.lrtd-status.low {
+  color: #1d4ed8;
+}
+
+.lrtd-status.high {
+  color: #c2410c;
+}
+
+.lrtd-status.critical {
+  color: #b91c1c;
+  font-weight: 800;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 3px;
+  padding: 1px 6px;
+  display: inline-block;
 }
 
 .lrtd-add-row {

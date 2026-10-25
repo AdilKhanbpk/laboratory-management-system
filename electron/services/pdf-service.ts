@@ -367,13 +367,28 @@ export class PdfService {
       font-weight: 700;
       color: #000000;
     }
-    .status-high, .status-low, .status-critical {
-      font-weight: 700;
-      color: #b91c1c;
-    }
     .status-normal {
       font-weight: 700;
       color: #15803d;
+    }
+    .status-low {
+      font-weight: 700;
+      color: #1d4ed8;
+    }
+    .status-high {
+      font-weight: 700;
+      color: #c2410c;
+    }
+    .status-critical {
+      font-weight: 800;
+      color: #b91c1c;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 3px;
+      padding: 1px 6px;
+      display: inline-block;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .observations-body {
       padding: 8px 10px;
@@ -644,8 +659,8 @@ export class PdfService {
           results: [
             {
               parameter: { id: 1, name: 'Hemoglobin (Hb)', unit: 'g/dL', type: 'numeric', displayOrder: 1 },
-              result: { id: 1, order_item_id: 1, parameter_id: 1, numeric_value: 14.2, result_value: '14.2', unit_snapshot: 'g/dL', reference_range_display: '13.0 - 17.0 g/dL', flag: 'normal', status: 'finalized', entered_by: 1, entered_at: new Date().toISOString(), version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-              flag: 'normal',
+              result: { id: 1, order_item_id: 1, parameter_id: 1, numeric_value: 11.2, result_value: '11.2', unit_snapshot: 'g/dL', reference_range_display: '13.0 - 17.0 g/dL', flag: 'low', status: 'finalized', entered_by: 1, entered_at: new Date().toISOString(), version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+              flag: 'low',
               referenceRangeDisplay: '13.0 - 17.0 g/dL',
             },
             {
@@ -656,8 +671,8 @@ export class PdfService {
             },
             {
               parameter: { id: 3, name: 'Platelet Count', unit: 'x10^9/L', type: 'numeric', displayOrder: 3 },
-              result: { id: 3, order_item_id: 1, parameter_id: 3, numeric_value: 250, result_value: '250', unit_snapshot: 'x10^9/L', reference_range_display: '150 - 400 x10^9/L', flag: 'normal', status: 'finalized', entered_by: 1, entered_at: new Date().toISOString(), version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-              flag: 'normal',
+              result: { id: 3, order_item_id: 1, parameter_id: 3, numeric_value: 18, result_value: '18', unit_snapshot: 'x10^9/L', reference_range_display: '150 - 400 x10^9/L', flag: 'critical', status: 'finalized', entered_by: 1, entered_at: new Date().toISOString(), version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+              flag: 'critical',
               referenceRangeDisplay: '150 - 400 x10^9/L',
             },
             {

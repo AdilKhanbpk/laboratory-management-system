@@ -424,14 +424,22 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                                         );
                                       }
                                       if (col.key === 'status') {
+                                        let statusColor = 'text-emerald-700 font-bold';
+                                        let badgeCls = '';
+                                        if (isCritical) {
+                                          statusColor = 'text-red-700 font-extrabold';
+                                          badgeCls = 'bg-red-50 border border-red-200 px-1.5 py-0.5 rounded inline-block';
+                                        } else if (isHigh) {
+                                          statusColor = 'text-amber-700 font-bold';
+                                        } else if (isLow) {
+                                          statusColor = 'text-blue-700 font-bold';
+                                        }
+
                                         return (
-                                          <td
-                                            key={col.key}
-                                            className={`py-1.5 px-2.5 font-bold ${
-                                              abnormal ? 'text-red-700' : 'text-emerald-700'
-                                            }`}
-                                          >
-                                            {statusText}
+                                          <td key={col.key} className="py-1.5 px-2.5">
+                                            <span className={`${statusColor} ${badgeCls}`}>
+                                              {statusText}
+                                            </span>
                                           </td>
                                         );
                                       }

@@ -53,10 +53,10 @@ interface ResultEntryModalProps {
 }
 
 const FLAG_LABEL: Record<string, { text: string; cls: string }> = {
-  normal: { text: 'Normal', cls: 'text-[#15803D]' },
-  low: { text: 'Low', cls: 'text-[#D97706] font-semibold' },
-  high: { text: 'High', cls: 'text-[#D97706] font-semibold' },
-  critical: { text: 'Critical', cls: 'text-[#DC2626] font-semibold' },
+  normal: { text: 'Normal', cls: 'text-[#15803D] font-medium' },
+  low: { text: 'Low', cls: 'text-[#1D4ED8] font-semibold' },
+  high: { text: 'High', cls: 'text-[#C2410C] font-semibold' },
+  critical: { text: 'Critical', cls: 'text-[#B91C1C] font-bold bg-[#FEF2F2] border border-[#FECACA] px-1.5 py-0.5 rounded inline-block' },
 };
 
 const secondaryBtn =
