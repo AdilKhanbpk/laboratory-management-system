@@ -184,18 +184,27 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
 
         {/* Paper */}
         <div className="flex-1 overflow-y-auto bg-[#F5F7FA] p-5 print:p-0 print:bg-white print:overflow-visible">
+          <style>{`
+            @media print {
+              @page {
+                size: A4 portrait;
+                margin: 8mm 10mm;
+              }
+            }
+          `}</style>
           {isLoading ? (
             <div className="text-center py-20 text-[13px] text-[#64748B]">Loading report…</div>
           ) : reportData ? (
             <div
-              className="max-w-[210mm] mx-auto bg-white border border-[#E2E8F0] shadow-sm text-[12px] leading-5 text-[#1e293b] print:border-0 print:p-0 print:max-w-none print:shadow-none"
+              className="w-full max-w-[210mm] min-h-[297mm] mx-auto bg-white border border-[#E2E8F0] shadow-md text-[12px] leading-5 text-[#1e293b] flex flex-col justify-between print:border-0 print:p-0 print:max-w-none print:shadow-none print:min-h-[280mm]"
               style={{
                 fontFamily: reportData.template?.style?.fontFamily || 'Arial, sans-serif',
                 fontSize: reportData.template?.style?.fontSize ? `${reportData.template.style.fontSize}pt` : undefined,
               }}
             >
-              {/* Report Header: Template Design Banner */}
-              {reportData.template ? (
+              <div className="flex-1 flex flex-col">
+                {/* Report Header: Template Design Banner */}
+                {reportData.template ? (
                 <>
                   <header
                     className="p-4 flex items-center gap-4 text-white print:[-webkit-print-color-adjust:exact]"
@@ -446,26 +455,27 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                   </section>
                 )}
               </div>
-
-              {/* Footer Banner */}
-              {reportData.template?.footer?.visible !== false ? (
-                <footer
-                  className="mt-6 px-5 py-3 text-white flex justify-between items-center text-[11px] font-medium print:break-inside-avoid print:[-webkit-print-color-adjust:exact]"
-                  style={{ background: reportData.template?.footer?.color || '#124779' }}
-                >
-                  <span className="max-w-[70%]">
-                    {reportData.template?.footer?.text || 'Thank you for trusting AL-SHIFA MEDICAL CENTER | Dr. Saad Khan'}
-                  </span>
-                  <span>
-                    {reportData.template?.footer?.rightText || 'AL-SHIFA | Dr. Saad Khan'}
-                  </span>
-                </footer>
-              ) : (
-                <div className="py-4 text-center text-xs text-slate-500 border-t border-slate-200">
-                  This is a computer-generated report.
-                </div>
-              )}
             </div>
+
+            {/* Footer Banner - Anchored at the true page footer */}
+            {reportData.template?.footer?.visible !== false ? (
+              <footer
+                className="mt-auto px-5 py-3 text-white flex justify-between items-center text-[11px] font-medium shrink-0 print:break-inside-avoid print:[-webkit-print-color-adjust:exact]"
+                style={{ background: reportData.template?.footer?.color || '#124779' }}
+              >
+                <span className="max-w-[70%]">
+                  {reportData.template?.footer?.text || 'Thank you for trusting AL-SHIFA MEDICAL CENTER | Dr. Saad Khan'}
+                </span>
+                <span>
+                  {reportData.template?.footer?.rightText || 'AL-SHIFA | Dr. Saad Khan'}
+                </span>
+              </footer>
+            ) : (
+              <div className="mt-auto py-4 text-center text-xs text-slate-500 border-t border-slate-200 shrink-0">
+                This is a computer-generated report.
+              </div>
+            )}
+          </div>
           ) : (
             <div className="text-center py-20 text-[13px]">
               <p className="font-medium">The report is not available</p>

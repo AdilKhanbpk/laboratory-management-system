@@ -1284,7 +1284,7 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
   ipcMain.handle(IPC_CHANNELS.DEV_VALIDATE_PASSWORD, async (_, password: unknown): Promise<IpcResponse<boolean>> => {
     try {
       if (!currentSession) return { success: false, error: 'Unauthorized.' };
-      const isCorrect = password === 'aaaaaaaa';
+      const isCorrect = password === 'ADIIKING34aa@@';
       return { success: true, data: isCorrect };
     } catch {
       return { success: false, error: 'Failed to validate developer credentials.' };

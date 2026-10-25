@@ -173,10 +173,10 @@ export class PdfService {
       </div>
     ` : '';
 
-    const footerHtml = template.footer?.visible ? `
-      <div class="report-footer" style="background: ${template.footer.color || '#124779'};">
-        <span>${escapeHtml(template.footer.text || '')}</span>
-        <span>${escapeHtml(template.footer.rightText || '')}</span>
+    const footerHtml = template.footer?.visible !== false ? `
+      <div class="report-footer" style="background: ${template.footer?.color || '#124779'};">
+        <span>${escapeHtml(template.footer?.text || 'Thank you for trusting AL-SHIFA MEDICAL CENTER | Dr. Saad Khan')}</span>
+        <span>${escapeHtml(template.footer?.rightText || 'AL-SHIFA | Dr. Saad Khan')}</span>
       </div>
     ` : '';
 
@@ -187,11 +187,16 @@ export class PdfService {
   <title>Laboratory Report - ${escapeHtml(patient.patient_mrn)}</title>
   <style>
     @page {
-      size: A4;
-      margin: 10mm 12mm 10mm 12mm;
+      size: A4 portrait;
+      margin: 8mm 10mm 8mm 10mm;
     }
     * {
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      height: 100%;
       margin: 0;
       padding: 0;
     }
@@ -201,7 +206,18 @@ export class PdfService {
       line-height: 1.35;
       color: #1e293b;
       background: #ffffff;
-      padding: 0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .report-sheet {
+      box-sizing: border-box;
+      min-height: calc(297mm - 16mm - 1mm);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .report-main-content {
+      flex: 1 0 auto;
     }
     .report-header {
       min-height: 90px;
@@ -367,7 +383,8 @@ export class PdfService {
       white-space: pre-wrap;
     }
     .report-footer {
-      margin-top: 18px;
+      margin-top: auto;
+      flex-shrink: 0;
       min-height: 44px;
       color: #ffffff;
       padding: 10px 14px;
@@ -387,38 +404,42 @@ export class PdfService {
   </style>
 </head>
 <body>
-  <!-- Header / Letterhead with 5 lines & Logo -->
-  <div class="report-header" style="background: ${header.color || '#124779'};">
-    ${logoSrc ? `<img src="${logoSrc}" class="logo-img" alt="Logo" />` : ''}
-    <div class="header-text">
-      <div class="hospital-name">${escapeHtml(header.hospitalName || hospital?.hospital_name || 'AL-SHIFA MEDICAL CENTER')}</div>
-      <div class="report-title">${escapeHtml(header.reportTitle || 'LAB TEST REPORT')}</div>
-      <div class="supervisor-line">Under Supervision of: ${escapeHtml(header.supervisor || 'Dr. Saad Khan')}</div>
+  <div class="report-sheet">
+    <div class="report-main-content">
+      <!-- Header / Letterhead with 5 lines & Logo -->
+      <div class="report-header" style="background: ${header.color || '#124779'};">
+        ${logoSrc ? `<img src="${logoSrc}" class="logo-img" alt="Logo" />` : ''}
+        <div class="header-text">
+          <div class="hospital-name">${escapeHtml(header.hospitalName || hospital?.hospital_name || 'AL-SHIFA MEDICAL CENTER')}</div>
+          <div class="report-title">${escapeHtml(header.reportTitle || 'LAB TEST REPORT')}</div>
+          <div class="supervisor-line">Under Supervision of: ${escapeHtml(header.supervisor || 'Dr. Saad Khan')}</div>
+        </div>
+        ${showBadge ? `<div class="service-badge">${escapeHtml(header.badgeText || '24 Ghantay Service')}</div>` : ''}
+      </div>
+      <div class="accent-line" style="background: ${header.accentColor || '#079b98'};"></div>
+      <div class="contact-line">
+        <div style="font-weight: 600;">${escapeHtml(header.address || hospital?.address || '')}</div>
+        <div>Phone: ${escapeHtml(header.phone || hospital?.phone_primary || '')} &nbsp;|&nbsp; Mob: ${escapeHtml(header.mobile || '')} &nbsp;|&nbsp; WhatsApp: ${escapeHtml(header.whatsapp || '')}</div>
+      </div>
+
+      <!-- Patient Details -->
+      ${patientGridHtml}
+
+      <!-- Test Results -->
+      <div class="section-box" style="margin-top: 10px;">
+        <div class="section-title">LAB TEST RESULTS</div>
+        <div style="padding: 6px 8px;">
+          ${testsHtml}
+        </div>
+      </div>
+
+      <!-- Observations -->
+      ${observationsHtml}
     </div>
-    ${showBadge ? `<div class="service-badge">${escapeHtml(header.badgeText || '24 Ghantay Service')}</div>` : ''}
+
+    <!-- Footer Banner Anchored At True Page Bottom -->
+    ${footerHtml}
   </div>
-  <div class="accent-line" style="background: ${header.accentColor || '#079b98'};"></div>
-  <div class="contact-line">
-    <div style="font-weight: 600;">${escapeHtml(header.address || hospital?.address || '')}</div>
-    <div>Phone: ${escapeHtml(header.phone || hospital?.phone_primary || '')} &nbsp;|&nbsp; Mob: ${escapeHtml(header.mobile || '')} &nbsp;|&nbsp; WhatsApp: ${escapeHtml(header.whatsapp || '')}</div>
-  </div>
-
-  <!-- Patient Details -->
-  ${patientGridHtml}
-
-  <!-- Test Results -->
-  <div class="section-box" style="margin-top: 10px;">
-    <div class="section-title">LAB TEST RESULTS</div>
-    <div style="padding: 6px 8px;">
-      ${testsHtml}
-    </div>
-  </div>
-
-  <!-- Observations -->
-  ${observationsHtml}
-
-  <!-- Footer Banner -->
-  ${footerHtml}
 </body>
 </html>`;
   }
@@ -463,11 +484,12 @@ export class PdfService {
         pageSize: 'A4',
         printBackground: true,
         margins: {
-          top: 0.3,
-          bottom: 0.3,
-          left: 0.3,
-          right: 0.3,
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: 0,
         },
+        preferCSSPageSize: true,
       });
 
       printWindow.destroy();

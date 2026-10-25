@@ -29,7 +29,7 @@ export const DEFAULT_REPORT_TEMPLATE: ReportTemplate = {
     'C/O No.',
     'S/O,D/O,W/O',
     'Referring Physician',
-    'Sample Collected',
+    // 'Sample Collected',
   ],
   columns: [
     { key: 'testName', label: 'Test Name', visible: true },
