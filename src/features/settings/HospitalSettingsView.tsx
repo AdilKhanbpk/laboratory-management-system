@@ -308,21 +308,6 @@ export const HospitalSettingsView: React.FC<HospitalSettingsViewProps> = ({
                   </Field>
 
                   <Field
-                    label="Tagline"
-                    htmlFor="tagline"
-                    hint="Optional. Shown under the name."
-                    className="sm:col-span-2"
-                    error={errors.tagline?.message}
-                  >
-                    <input
-                      id="tagline"
-                      className={inputCls}
-                      aria-invalid={!!errors.tagline}
-                      {...register('tagline')}
-                    />
-                  </Field>
-
-                  <Field
                     label="Address"
                     htmlFor="address"
                     className="sm:col-span-2"
@@ -483,9 +468,6 @@ export const HospitalSettingsView: React.FC<HospitalSettingsViewProps> = ({
                   >
                     {live.hospital_name || 'Laboratory name'}
                   </p>
-                  {live.tagline && (
-                    <p className="text-xs text-[#64748B] mt-0.5">{live.tagline}</p>
-                  )}
                   <p
                     className={`text-xs mt-1.5 leading-4 ${
                       contactLine ? 'text-[#64748B]' : 'text-[#94A3B8]'

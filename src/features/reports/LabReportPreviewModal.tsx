@@ -202,9 +202,6 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                   <h1 className="text-2xl font-bold leading-7">
                     {hospital?.hospital_name || 'Diagnostic Laboratory'}
                   </h1>
-                  {hospital?.tagline && (
-                    <p className="text-[12px] text-slate-600">{hospital.tagline}</p>
-                  )}
                   {hospital?.address && <p className="text-[12px] mt-0.5">{hospital.address}</p>}
                   {(phones || hospital?.email) && (
                     <p className="text-[12px]">
@@ -233,9 +230,6 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                       </span>
                     </InfoRow>
                     <InfoRow label="Phone">{reportData.patient.phone_number || '—'}</InfoRow>
-                    <InfoRow label="Referred by">
-                      {reportData.doctor ? `Dr. ${reportData.doctor.full_name}` : 'Self'}
-                    </InfoRow>
                   </div>
 
                   <div className="pl-4">
@@ -247,13 +241,6 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                     </InfoRow>
                     <InfoRow label="Visit date">{formatDateTime(reportData.visit.order_date)}</InfoRow>
                     <InfoRow label="Printed on">{formatDateTime(new Date().toISOString())}</InfoRow>
-                    <InfoRow label="Status">
-                      {snapshot
-                        ? snapshot.status === 'amended'
-                          ? `Amended, revision ${snapshot.version}`
-                          : 'Final'
-                        : <span className="capitalize">{reportData.visit.status}</span>}
-                    </InfoRow>
                   </div>
                 </dl>
               </section>
@@ -356,60 +343,11 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                 ))}
               </div>
 
-              {reportData.tests.some((t) =>
-                t.results.some((r) => r.flag === 'high' || r.flag === 'low' || r.flag === 'critical')
-              ) && (
-                <p className="mt-2 text-[11px] text-slate-600">
-                  H = above the reference range. L = below the reference range.
+              {/* Computer generated disclaimer footer */}
+              <footer className="mt-8 pt-4 border-t border-slate-300 text-center print:break-inside-avoid">
+                <p className="text-[12px] font-medium text-slate-800">
+                  This is a computer-generated report, therefore it does not require any signature.
                 </p>
-              )}
-
-              {/* Amendments */}
-              {reportData.amendments && reportData.amendments.length > 0 && (
-                <section className="mt-5 print:break-inside-avoid">
-                  <h2 className="text-[13px] font-bold border-b border-black pb-1">
-                    Corrections to this report
-                  </h2>
-                  <ul className="divide-y divide-slate-200">
-                    {reportData.amendments.map((am) => (
-                      <li key={am.id} className="py-1.5 text-[11px]">
-                        <span className="font-semibold">{am.parameter_name}</span>: changed from{' '}
-                        <span className="line-through text-slate-600 tabular-nums">
-                          {am.previous_value}
-                        </span>{' '}
-                        to <span className="font-bold tabular-nums">{am.new_value}</span> on{' '}
-                        {formatDateTime(am.created_at)} by {am.amended_by_name || 'staff'}.
-                        <span className="block text-slate-600">Reason: {am.amendment_reason}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
-              {/* Signatures and footer */}
-              <footer className="mt-10 print:break-inside-avoid">
-                <div className="grid grid-cols-2 gap-10 text-center">
-                  <div>
-                    <div className="border-b border-black mx-6 h-8" />
-                    <p className="font-semibold mt-1">Medical technologist</p>
-                  </div>
-                  <div>
-                    <div className="border-b border-black mx-6 h-8" />
-                    <p className="font-semibold mt-1">Pathologist / Lab in-charge</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-2 border-t border-slate-300 text-center text-[10px] text-slate-600 leading-4">
-                  <p>
-                    Results should be read together with the patient’s symptoms and history. This
-                    report was produced by a computer; a stamp or signature confirms it.
-                  </p>
-                  {snapshot && (
-                    <p className="mt-0.5 tabular-nums">
-                      Verification code: {snapshot.integrity_hash.substring(0, 16)}
-                    </p>
-                  )}
-                </div>
               </footer>
             </div>
           ) : (

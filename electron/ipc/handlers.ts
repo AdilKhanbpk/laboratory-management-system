@@ -1115,7 +1115,16 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
         return { success: false, error: 'Application window is not available for PDF generation.' };
       }
 
-      const result = await PdfService.exportReportPdf(mainWindow, parsed.data.defaultFileName || `Lab_Report_Visit_${parsed.data.visitId}.pdf`);
+      const reportData = ctx.resultRepo.getFullDiagnosticReport(parsed.data.visitId);
+      if (reportData.hospital) {
+        reportData.hospital = attachLogoUrl(reportData.hospital, ctx.logoService) || reportData.hospital;
+      }
+
+      const result = await PdfService.exportReportPdf(
+        mainWindow,
+        reportData,
+        parsed.data.defaultFileName || `Lab_Report_Visit_${parsed.data.visitId}.pdf`
+      );
       return { success: result.success, data: result };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to export PDF.' };

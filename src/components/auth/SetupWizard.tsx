@@ -919,16 +919,6 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
                       </Field>
 
                       <Field
-                        id="tagline"
-                        label="Tagline"
-                        help="Shown under the name on printed reports."
-                        error={errors.tagline?.message}
-                        className="md:col-span-2"
-                      >
-                        <input id="tagline" className={inputClass} {...register('tagline')} />
-                      </Field>
-
-                      <Field
                         id="address"
                         label="Address"
                         required

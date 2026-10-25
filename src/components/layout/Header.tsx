@@ -166,7 +166,6 @@ export const Header: React.FC<HeaderProps> = ({ hospital, user, onLock, onLogout
         )}
         <div className="min-w-0 leading-tight">
           <h2 className="text-sm font-semibold text-[#1F2937] truncate">{hospital.hospital_name}</h2>
-          {hospital.tagline && <p className="text-xs text-[#64748B] truncate">{hospital.tagline}</p>}
         </div>
       </div>
 

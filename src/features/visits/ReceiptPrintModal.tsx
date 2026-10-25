@@ -428,9 +428,6 @@ export const ReceiptPrintModal: React.FC<ReceiptPrintModalProps> = ({
               <h1 className="text-base font-semibold leading-5">
                 {hospital?.hospital_name || 'Medical Diagnostic Laboratory'}
               </h1>
-              {hospital?.tagline && (
-                <p className="text-xs text-[#64748B] print:text-black">{hospital.tagline}</p>
-              )}
               {contactLine && (
                 <p className="text-xs text-[#64748B] print:text-black mt-0.5">{contactLine}</p>
               )}
