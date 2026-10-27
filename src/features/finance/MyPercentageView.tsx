@@ -1061,7 +1061,10 @@ export const MyPercentageView: React.FC = () => {
                       {a.notes && (
                         <div className="mt-1.5 space-y-1.5 text-xs">
                           {(() => {
-                            const isEditHistory = (str: string) => /^\s*\[EDIT HISTORY/i.test(str);
+                            const isEditHistory = (str: string) =>
+                              /\[EDIT HISTORY/i.test(str) ||
+                              /Reason for change:/i.test(str) ||
+                              /What changed:/i.test(str);
                             let baseNote = '';
                             const editTrails: string[] = [];
 
@@ -1175,7 +1178,10 @@ export const MyPercentageView: React.FC = () => {
                   {t.notes && (
                     <div className="mt-1.5 space-y-1.5 text-xs">
                       {(() => {
-                        const isEditHistory = (str: string) => /^\s*\[EDIT HISTORY/i.test(str);
+                        const isEditHistory = (str: string) =>
+                          /\[EDIT HISTORY/i.test(str) ||
+                          /Reason for change:/i.test(str) ||
+                          /What changed:/i.test(str);
                         let baseNote = '';
                         const editTrails: string[] = [];
 

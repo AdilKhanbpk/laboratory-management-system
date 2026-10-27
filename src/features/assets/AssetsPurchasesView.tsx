@@ -557,7 +557,10 @@ export const AssetsPurchasesView: React.FC<AssetsPurchasesViewProps> = ({ hospit
                       <td className={`${td} text-[#64748B]`}>
                         {(() => {
                           if (!asset.notes) return '–';
-                          const isEditHistory = (str: string) => /^\s*\[EDIT HISTORY/i.test(str);
+                          const isEditHistory = (str: string) =>
+                            /\[EDIT HISTORY/i.test(str) ||
+                            /Reason for change:/i.test(str) ||
+                            /What changed:/i.test(str);
                           const parts = asset.notes.split(/(?=\[EDIT HISTORY)/i).map((p) => p.trim()).filter(Boolean);
                           const editTrails: string[] = [];
                           for (const p of parts) {
@@ -614,7 +617,10 @@ export const AssetsPurchasesView: React.FC<AssetsPurchasesViewProps> = ({ hospit
                               <span className="font-semibold text-slate-800">{asset.title}</span>
                             </p>
                             {(() => {
-                              const isEditHistory = (str: string) => /^\s*\[EDIT HISTORY/i.test(str);
+                              const isEditHistory = (str: string) =>
+                                /\[EDIT HISTORY/i.test(str) ||
+                                /Reason for change:/i.test(str) ||
+                                /What changed:/i.test(str);
                               const parts = asset.notes.split(/(?=\[EDIT HISTORY)/i).map((p) => p.trim()).filter(Boolean);
                               const editTrails: string[] = [];
                               for (const p of parts) {

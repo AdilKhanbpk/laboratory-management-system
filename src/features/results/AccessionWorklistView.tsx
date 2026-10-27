@@ -100,34 +100,7 @@ interface AccessionWorklistViewProps {
   currentUser?: SafeUser | null;
 }
 
-export const AccessionWorklistView: React.FC<AccessionWorklistViewProps> = ({ currentUser }) => {
-  const [sessionUser, setSessionUser] = useState<SafeUser | null>(currentUser || null);
-
-  useEffect(() => {
-    if (currentUser !== undefined) {
-      setSessionUser(currentUser);
-    } else {
-      window.electronAPI.auth.getSession().then((res) => {
-        if (res.success && res.data?.user) {
-          setSessionUser(res.data.user);
-        }
-      }).catch(() => {});
-    }
-  }, [currentUser]);
-
-  const isAdmin = sessionUser?.role === 'admin';
-
-  const canEditReport = (v: GroupedVisit): boolean => {
-    if (isAdmin) return true;
-    if (v.creatorRole === 'admin') return false;
-    if (v.operatorId !== sessionUser?.id) return false;
-    if (v.visitCreatedAt) {
-      const createdTime = new Date(v.visitCreatedAt).getTime();
-      const diffHours = (Date.now() - createdTime) / (1000 * 60 * 60);
-      if (diffHours > 10) return false;
-    }
-    return true;
-  };
+export const AccessionWorklistView: React.FC<AccessionWorklistViewProps> = () => {
   const [worklist, setWorklist] = useState<WorklistOrderItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -541,20 +514,14 @@ export const AccessionWorklistView: React.FC<AccessionWorklistViewProps> = ({ cu
                         <ul className="space-y-1.5">
                           {visit.tests.map((t) => (
                             <li key={t.orderItemId} className="flex items-baseline gap-2">
-                              {canEditReport(visit) ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenVisitResults(visit, t.orderItemId)}
-                                  title={`Open results for ${t.testName}`}
-                                  className="text-left font-medium hover:text-[#0F766E] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
-                                >
-                                  {t.testName}
-                                </button>
-                              ) : (
-                                <span className="text-left font-medium text-slate-800">
-                                  {t.testName}
-                                </span>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenVisitResults(visit, t.orderItemId)}
+                                title={`Open results for ${t.testName}`}
+                                className="text-left font-medium hover:text-[#0F766E] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
+                              >
+                                {t.testName}
+                              </button>
                               <span className="text-xs text-[#64748B]">{t.testCode}</span>
                               {visit.tests.length > 1 && (
                                 <span className="text-xs text-[#64748B] tabular-nums">
@@ -600,21 +567,15 @@ export const AccessionWorklistView: React.FC<AccessionWorklistViewProps> = ({ cu
                       <td className={`${td} whitespace-nowrap`}>
                         <div className="flex items-center justify-end gap-2">
                           {!isFinalized ? (
-                            canEditReport(visit) ? (
-                              <button
-                                type="button"
-                                className={smallPrimaryBtn}
-                                onClick={() => handleOpenVisitResults(visit)}
-                              >
-                                {visit.overallStatus === 'draft' || visit.overallStatus === 'reviewed'
-                                  ? 'Continue entry'
-                                  : 'Enter results'}
-                              </button>
-                            ) : (
-                              <span className="text-xs text-slate-400 italic">
-                                {visit.creatorRole === 'admin' ? 'Admin bill' : 'Locked (>10h)'}
-                              </span>
-                            )
+                            <button
+                              type="button"
+                              className={smallPrimaryBtn}
+                              onClick={() => handleOpenVisitResults(visit)}
+                            >
+                              {visit.overallStatus === 'draft' || visit.overallStatus === 'reviewed'
+                                ? 'Continue entry'
+                                : 'Enter results'}
+                            </button>
                           ) : (
                             <>
                               <button
@@ -624,16 +585,14 @@ export const AccessionWorklistView: React.FC<AccessionWorklistViewProps> = ({ cu
                               >
                                 Report
                               </button>
-                              {canEditReport(visit) && (
-                                <button
-                                  type="button"
-                                  className={smallBtn}
-                                  onClick={() => handleOpenVisitResults(visit)}
-                                  title="Edit results or update report"
-                                >
-                                  Edit results
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                className={smallBtn}
+                                onClick={() => handleOpenVisitResults(visit)}
+                                title="Edit results or update report"
+                              >
+                                Edit results
+                              </button>
                             </>
                           )}
                         </div>

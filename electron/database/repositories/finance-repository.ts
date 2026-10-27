@@ -561,6 +561,32 @@ export class FinanceRepository {
     return { id: Number(res.lastInsertRowid), ...input, status: 'active', createdAt: now };
   }
 
+  public deduplicateTransactionNotes(notes: string | null): string | null {
+    if (!notes) return notes;
+    const histIdx = notes.search(/\[EDIT HISTORY/i);
+    if (histIdx === -1) return notes;
+
+    const baseNote = notes.slice(0, histIdx).trim();
+    const histRaw = notes.slice(histIdx);
+    const parts = histRaw.split(/(?=\[EDIT HISTORY)/i).map((p: string) => p.trim()).filter(Boolean);
+    const uniqueHistory: string[] = [];
+    let hadDuplicates = false;
+
+    for (const p of parts) {
+      if (!uniqueHistory.includes(p)) {
+        uniqueHistory.push(p);
+      } else {
+        hadDuplicates = true;
+      }
+    }
+
+    if (!hadDuplicates) return notes;
+
+    return baseNote
+      ? `${baseNote}\n\n${uniqueHistory.join('\n\n')}`
+      : uniqueHistory.join('\n\n');
+  }
+
   public updatePartnerTransaction(
     input: {
       id: number;
@@ -1102,6 +1128,20 @@ export class FinanceRepository {
       ORDER BY t.payment_date DESC, t.id DESC
       LIMIT 100
     `).all(...txPeriod.params) as any[];
+
+    for (const row of txRows) {
+      if (row.notes) {
+        const sanitized = this.deduplicateTransactionNotes(row.notes);
+        if (sanitized !== row.notes) {
+          row.notes = sanitized;
+          try {
+            db.prepare('UPDATE partner_transactions SET notes = ? WHERE id = ?').run(sanitized, row.id);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
 
     // Expenses list in period (filtered strictly by selected date filter)
     const expRows = db.prepare(`
