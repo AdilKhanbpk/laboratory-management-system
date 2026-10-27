@@ -161,6 +161,10 @@ export const MyPercentageView: React.FC = () => {
   const [showAssets, setShowAssets] = useState(false);
   const [showTransactions, setShowTransactions] = useState(true);
 
+  // Expanded Audits in My Percentage
+  const [expandedTxAudits, setExpandedTxAudits] = useState<Record<number, boolean>>({});
+  const [expandedAssetAudits, setExpandedAssetAudits] = useState<Record<number, boolean>>({});
+
   // Edit Transaction state
   const [editingTx, setEditingTx] = useState<EditingTxState | null>(null);
   const [editAmountStr, setEditAmountStr] = useState('');
@@ -1055,7 +1059,7 @@ export const MyPercentageView: React.FC = () => {
                         {a.recordedByName ? ` · By: ${a.recordedByName}` : ''}
                       </p>
                       {a.notes && (
-                        <div className="mt-1.5 space-y-1 text-xs">
+                        <div className="mt-1.5 space-y-1.5 text-xs">
                           {(() => {
                             const isEditHistory = (str: string) => /^\s*\[EDIT HISTORY/i.test(str);
                             let baseNote = '';
@@ -1072,20 +1076,47 @@ export const MyPercentageView: React.FC = () => {
                               }
                             }
 
+                            const isExpanded = !!expandedAssetAudits[a.id];
+
                             return (
                               <>
                                 {baseNote && <p className="text-slate-600 break-words">{baseNote}</p>}
-                                {editTrails.map((trail, idx) => (
-                                  <div
-                                    key={idx}
-                                    className="rounded-md bg-amber-50/90 border border-amber-200/90 p-2 text-[11px] text-amber-950 whitespace-pre-wrap font-sans leading-relaxed"
-                                  >
-                                    <div className="font-semibold text-amber-800 flex items-center gap-1.5 mb-0.5">
-                                      <span>📝 Modification Record:</span>
-                                    </div>
-                                    {trail}
+                                {editTrails.length > 0 && (
+                                  <div className="pt-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setExpandedAssetAudits((prev) => ({
+                                          ...prev,
+                                          [a.id]: !prev[a.id],
+                                        }))
+                                      }
+                                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
+                                        isExpanded
+                                          ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                                          : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                                      }`}
+                                      title={isExpanded ? 'Hide audit modification records' : 'Show audit modification records'}
+                                    >
+                                      <span>📝 {isExpanded ? 'Hide Audits' : `Show Audits (${editTrails.length})`}</span>
+                                    </button>
                                   </div>
-                                ))}
+                                )}
+                                {isExpanded && editTrails.length > 0 && (
+                                  <div className="space-y-1 pt-1">
+                                    {editTrails.map((trail, idx) => (
+                                      <div
+                                        key={idx}
+                                        className="rounded-md bg-amber-50/90 border border-amber-200/90 p-2 text-[11px] text-amber-950 whitespace-pre-wrap font-sans leading-relaxed"
+                                      >
+                                        <div className="font-semibold text-amber-800 flex items-center gap-1.5 mb-0.5">
+                                          <span>📝 Modification Record:</span>
+                                        </div>
+                                        {trail}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </>
                             );
                           })()}
@@ -1142,7 +1173,7 @@ export const MyPercentageView: React.FC = () => {
                     {t.recordedByName ? ` · By: ${t.recordedByName}` : ''}
                   </p>
                   {t.notes && (
-                    <div className="mt-1.5 space-y-1 text-xs">
+                    <div className="mt-1.5 space-y-1.5 text-xs">
                       {(() => {
                         const isEditHistory = (str: string) => /^\s*\[EDIT HISTORY/i.test(str);
                         let baseNote = '';
@@ -1159,20 +1190,47 @@ export const MyPercentageView: React.FC = () => {
                           }
                         }
 
+                        const isExpanded = !!expandedTxAudits[t.id];
+
                         return (
                           <>
                             {baseNote && <p className="text-slate-600 break-words">{baseNote}</p>}
-                            {editTrails.map((trail, idx) => (
-                              <div
-                                key={idx}
-                                className="rounded-md bg-amber-50/90 border border-amber-200/90 p-2 text-[11px] text-amber-950 whitespace-pre-wrap font-sans leading-relaxed"
-                              >
-                                <div className="font-semibold text-amber-800 flex items-center gap-1.5 mb-0.5">
-                                  <span>📝 Modification Record:</span>
-                                </div>
-                                {trail}
+                            {editTrails.length > 0 && (
+                              <div className="pt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedTxAudits((prev) => ({
+                                      ...prev,
+                                      [t.id]: !prev[t.id],
+                                    }))
+                                  }
+                                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
+                                    isExpanded
+                                      ? 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200'
+                                      : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                                  }`}
+                                  title={isExpanded ? 'Hide audit modification records' : 'Show audit modification records'}
+                                >
+                                  <span>📝 {isExpanded ? 'Hide Audits' : `Show Audits (${editTrails.length})`}</span>
+                                </button>
                               </div>
-                            ))}
+                            )}
+                            {isExpanded && editTrails.length > 0 && (
+                              <div className="space-y-1 pt-1">
+                                {editTrails.map((trail, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="rounded-md bg-amber-50/90 border border-amber-200/90 p-2 text-[11px] text-amber-950 whitespace-pre-wrap font-sans leading-relaxed"
+                                  >
+                                    <div className="font-semibold text-amber-800 flex items-center gap-1.5 mb-0.5">
+                                      <span>📝 Modification Record:</span>
+                                    </div>
+                                    {trail}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </>
                         );
                       })()}

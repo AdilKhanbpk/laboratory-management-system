@@ -582,7 +582,7 @@ export const AssetsPurchasesView: React.FC<AssetsPurchasesViewProps> = ({ hospit
                                   }`}
                                   title="Click to view full modification history"
                                 >
-                                  📝 Audit ({editCount})
+                                  📝 {expandedAssetId === asset.id ? 'Hide Audits' : `Show Audits (${editCount})`}
                                 </button>
                               )}
                             </div>
