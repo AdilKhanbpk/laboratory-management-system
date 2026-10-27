@@ -133,7 +133,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { LoginSchema, LoginInput, SessionInfo } from '../../types';
-import { FlaskConical, AlertCircle, Loader2 } from 'lucide-react';
+import { FlaskConical, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 
 /*
  * Same tokens as SetupWizard and Sidebar:
@@ -159,6 +159,7 @@ const facts: Array<[string, string]> = [
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, hospitalName }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
@@ -269,13 +270,25 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, hospitalNa
                 <label htmlFor="password" className="block text-[13px] font-medium mb-1.5">
                   Password
                 </label>
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  className={inputClass}
-                  {...register('password')}
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    className={`${inputClass} pr-10`}
+                    {...register('password')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#1F2937] p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
                 {errors.password?.message && (
                   <p className="mt-1.5 text-xs text-[#DC2626]">{errors.password.message}</p>
                 )}

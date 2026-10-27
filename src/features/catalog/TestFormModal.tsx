@@ -33,11 +33,13 @@ const DEFAULT_CATEGORIES = [
 
 const inputClass =
   'block w-full h-9 px-3 rounded-md border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] ' +
-  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]';
+  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E] ' +
+  '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:hidden [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:hidden';
 
 const criticalInputClass =
   'block w-full h-9 px-3 rounded-md border border-[#D97706]/50 bg-white text-[13px] text-[#1F2937] ' +
-  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#D97706] focus:ring-1 focus:ring-[#D97706]';
+  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#D97706] focus:ring-1 focus:ring-[#D97706] ' +
+  '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:hidden [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:hidden';
 
 const primaryBtn =
   'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md bg-[#0F766E] text-[13px] font-medium text-white ' +

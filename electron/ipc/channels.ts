@@ -100,6 +100,37 @@ export const IPC_CHANNELS = {
   AUDIT_GET_RECENT: 'audit:get-recent',
   AUDIT_QUERY: 'audit:query',
 
+  // Assets & Purchases
+  ASSETS_LIST: 'assets:list',
+  ASSETS_GET_BY_ID: 'assets:get-by-id',
+  ASSETS_CREATE: 'assets:create',
+  ASSETS_UPDATE: 'assets:update',
+  ASSETS_DELETE: 'assets:delete',
+  ASSETS_GET_SUMMARY: 'assets:get-summary',
+  ASSETS_EXPORT_PDF: 'assets:export-pdf',
+
+  // Owner Financials & My Percentage
+  FINANCE_GET_MY_PERCENTAGE_SUMMARY: 'finance:get-my-percentage-summary',
+  FINANCE_RECORD_PAYOUT: 'finance:record-payout',
+  FINANCE_DELETE_PAYOUT: 'finance:delete-payout',
+  FINANCE_UPDATE_OWNER_PERCENTAGE: 'finance:update-owner-percentage',
+
+  // Partnership & Settlement Dashboard
+  PARTNERSHIP_GET_DASHBOARD: 'partnership:get-dashboard',
+  PARTNERSHIP_RECORD_COLLECTION: 'partnership:record-collection',
+  PARTNERSHIP_RECORD_EXPENSE: 'partnership:record-expense',
+  PARTNERSHIP_REVERSE_EXPENSE: 'partnership:reverse-expense',
+  PARTNERSHIP_RECORD_PAYMENT: 'partnership:record-payment',
+  PARTNERSHIP_REVERSE_TRANSACTION: 'partnership:reverse-transaction',
+  PARTNERSHIP_CLOSE_MONTH: 'partnership:close-month',
+  PARTNERSHIP_RECORD_DOCTOR_COMMISSION_PAYMENT: 'partnership:record-doctor-commission-payment',
+  PARTNERSHIP_RECORD_INVESTOR_CAPITAL: 'partnership:record-investor-capital',
+  PARTNERSHIP_EXPORT_STATEMENT: 'partnership:export-statement',
+  PARTNERSHIP_UPDATE_SPLIT: 'partnership:update-split',
+  PARTNERSHIP_UPDATE_TRANSACTION: 'partnership:update-transaction',
+  PARTNERSHIP_DELETE_TRANSACTION: 'partnership:delete-transaction',
+  PARTNERSHIP_CLEAR_PAYOUTS: 'partnership:clear-payouts',
+
   // Report Templates Designer
   TEMPLATES_LIST: 'templates:list',
   TEMPLATES_GET_ACTIVE: 'templates:get-active',

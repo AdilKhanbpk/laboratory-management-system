@@ -585,6 +585,8 @@ import {
   AlertCircle,
   CheckCircle2,
   TriangleAlert,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 /*
@@ -608,7 +610,8 @@ interface SetupWizardProps {
 const inputClass =
   'block w-full h-9 px-3 rounded-md border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] ' +
   'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E] ' +
-  'disabled:bg-[#F1F5F9] disabled:text-[#64748B] disabled:cursor-not-allowed';
+  'disabled:bg-[#F1F5F9] disabled:text-[#64748B] disabled:cursor-not-allowed ' +
+  '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:hidden [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:hidden';
 
 const primaryBtn =
   'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md bg-[#0F766E] text-[13px] font-medium text-white ' +
@@ -688,6 +691,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
   const [setupMode, setSetupMode] = useState<'fresh' | 'migrate'>('fresh');
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Restore from backup state
   const [dynamicKey, setDynamicKey] = useState('');
@@ -1004,13 +1008,25 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onSetupComplete }) => 
                         error={errors.adminPassword?.message}
                         className="md:col-span-2"
                       >
-                        <input
-                          id="adminPassword"
-                          type="password"
-                          autoComplete="new-password"
-                          className={inputClass}
-                          {...register('adminPassword')}
-                        />
+                        <div className="relative">
+                          <input
+                            id="adminPassword"
+                            type={showPassword ? 'text' : 'password'}
+                            autoComplete="new-password"
+                            className={`${inputClass} pr-10`}
+                            {...register('adminPassword')}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword((prev) => !prev)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#1F2937] p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                            title={showPassword ? 'Hide password' : 'Show password'}
+                            tabIndex={-1}
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
                       </Field>
 
                       <Field

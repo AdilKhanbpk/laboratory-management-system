@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Visit, VisitSearchResult, VisitDetail, HospitalSettings } from '../../types';
+import { Visit, VisitSearchResult, VisitDetail, HospitalSettings, SafeUser } from '../../types';
 import { formatCurrency, formatDateTime } from '../../lib/utils';
 import { ReceiptPrintModal } from './ReceiptPrintModal';
 import { RecordPaymentModal } from './RecordPaymentModal';
@@ -17,6 +17,7 @@ import { Search, RefreshCw, ChevronLeft, ChevronRight, Plus, Calendar, Filter } 
 
 interface VisitListViewProps {
   hospitalSettings: HospitalSettings | null;
+  currentUser?: SafeUser | null;
   onNavigateNewVisit: () => void;
 }
 
@@ -79,8 +80,25 @@ type DatePreset = 'today' | 'this_week' | 'this_month' | 'all' | 'custom';
 
 export const VisitListView: React.FC<VisitListViewProps> = ({
   hospitalSettings,
+  currentUser,
   onNavigateNewVisit,
 }) => {
+  const [sessionUser, setSessionUser] = useState<SafeUser | null>(currentUser || null);
+
+  useEffect(() => {
+    if (currentUser !== undefined) {
+      setSessionUser(currentUser);
+    } else {
+      window.electronAPI.auth.getSession().then((res) => {
+        if (res.success && res.data?.user) {
+          setSessionUser(res.data.user);
+        }
+      }).catch(() => {});
+    }
+  }, [currentUser]);
+
+  const isAdmin = sessionUser?.role === 'admin';
+
   const [data, setData] = useState<VisitSearchResult>({
     visits: [],
     total: 0,
@@ -192,46 +210,48 @@ export const VisitListView: React.FC<VisitListViewProps> = ({
         </div>
       </div>
 
-      {/* Income & Financial Summary Live Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-[#E2E8F0] rounded-lg p-3.5 shadow-sm">
-          <p className="text-xs font-medium text-[#64748B]">Total Net Billed</p>
-          <p className="text-lg font-bold text-[#1F2937] mt-1 tabular-nums">
-            {formatCurrency(data.totalBilledPaisa ?? 0)}
-          </p>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">Across {data.total} matching visit{data.total === 1 ? '' : 's'}</p>
-        </div>
+      {/* Income & Financial Summary Live Cards (Visible ONLY to Administrator) */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white border border-[#E2E8F0] rounded-lg p-3.5 shadow-sm">
+            <p className="text-xs font-medium text-[#64748B]">Total Net Billed</p>
+            <p className="text-lg font-bold text-[#1F2937] mt-1 tabular-nums">
+              {formatCurrency(data.totalBilledPaisa ?? 0)}
+            </p>
+            <p className="text-[11px] text-[#94A3B8] mt-0.5">Across {data.total} matching visit{data.total === 1 ? '' : 's'}</p>
+          </div>
 
-        <div className="bg-white border border-[#E2E8F0] border-l-4 border-l-[#15803D] rounded-lg p-3.5 shadow-sm">
-          <p className="text-xs font-medium text-[#15803D]">Total Income Received</p>
-          <p className="text-lg font-bold text-[#15803D] mt-1 tabular-nums">
-            {formatCurrency(data.totalPaidPaisa ?? 0)}
-          </p>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">Cleared & collected revenue</p>
-        </div>
+          <div className="bg-white border border-[#E2E8F0] border-l-4 border-l-[#15803D] rounded-lg p-3.5 shadow-sm">
+            <p className="text-xs font-medium text-[#15803D]">Total Income Received</p>
+            <p className="text-lg font-bold text-[#15803D] mt-1 tabular-nums">
+              {formatCurrency(data.totalPaidPaisa ?? 0)}
+            </p>
+            <p className="text-[11px] text-[#94A3B8] mt-0.5">Cleared & collected revenue</p>
+          </div>
 
-        <div className="bg-white border border-[#E2E8F0] border-l-4 border-l-[#D97706] rounded-lg p-3.5 shadow-sm">
-          <p className="text-xs font-medium text-[#D97706]">Outstanding Balance</p>
-          <p className="text-lg font-bold text-[#D97706] mt-1 tabular-nums">
-            {formatCurrency(data.totalBalancePaisa ?? 0)}
-          </p>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">Pending collection from patients</p>
-        </div>
+          <div className="bg-white border border-[#E2E8F0] border-l-4 border-l-[#D97706] rounded-lg p-3.5 shadow-sm">
+            <p className="text-xs font-medium text-[#D97706]">Outstanding Balance</p>
+            <p className="text-lg font-bold text-[#D97706] mt-1 tabular-nums">
+              {formatCurrency(data.totalBalancePaisa ?? 0)}
+            </p>
+            <p className="text-[11px] text-[#94A3B8] mt-0.5">Pending collection from patients</p>
+          </div>
 
-        <div className="bg-white border border-[#E2E8F0] rounded-lg p-3.5 shadow-sm">
-          <p className="text-xs font-medium text-[#64748B]">Filtered Visits</p>
-          <p className="text-lg font-bold text-[#0F766E] mt-1 tabular-nums">
-            {data.total}
-          </p>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">
-            {statusFilter === 'all'
-              ? 'All payment statuses'
-              : statusFilter === 'paid'
-              ? 'Paid visits only'
-              : 'Unpaid & partial visits'}
-          </p>
+          <div className="bg-white border border-[#E2E8F0] rounded-lg p-3.5 shadow-sm">
+            <p className="text-xs font-medium text-[#64748B]">Filtered Visits</p>
+            <p className="text-lg font-bold text-[#0F766E] mt-1 tabular-nums">
+              {data.total}
+            </p>
+            <p className="text-[11px] text-[#94A3B8] mt-0.5">
+              {statusFilter === 'all'
+                ? 'All payment statuses'
+                : statusFilter === 'paid'
+                ? 'Paid visits only'
+                : 'Unpaid & partial visits'}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Filters and table share one panel */}
       <section className="bg-white border border-[#E2E8F0] rounded-lg overflow-hidden">

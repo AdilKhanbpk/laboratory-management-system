@@ -26,6 +26,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400',
             'focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-500 transition-colors',
             'disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed',
+            '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:hidden [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:hidden',
             error && 'border-red-400 focus:ring-red-300 focus:border-red-500',
             className
           )}

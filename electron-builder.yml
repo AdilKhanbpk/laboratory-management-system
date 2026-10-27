@@ -40,3 +40,4 @@ nsis:
   shortcutName: Offline Laboratory Management System
   uninstallDisplayName: Offline Laboratory Management System
   deleteAppDataOnUninstall: false
+  differentialPackage: false

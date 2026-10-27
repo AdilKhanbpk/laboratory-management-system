@@ -5,6 +5,8 @@ import type { AuditLogEntry } from '../database/repositories/audit-repository';
 import type { Patient, PatientSearchResult, DuplicatePatientWarning } from '../database/repositories/patient-repository';
 import type { Doctor, DuplicateDoctorWarning } from '../database/repositories/doctor-repository';
 import type { LabTest } from '../database/repositories/catalog-repository';
+import type { LabAsset, AssetFilterQuery } from '../database/repositories/asset-repository';
+import type { OwnerPayout, MyPercentageSummary, DoctorCommissionBreakdown, FinancialMetrics } from '../database/repositories/finance-repository';
 
 export type {
   SafeUser,
@@ -16,6 +18,12 @@ export type {
   Doctor,
   DuplicateDoctorWarning,
   LabTest,
+  LabAsset,
+  AssetFilterQuery,
+  OwnerPayout,
+  MyPercentageSummary,
+  DoctorCommissionBreakdown,
+  FinancialMetrics,
 };
 export type {
   ParameterReferenceRange,
@@ -141,6 +149,7 @@ export const CreateDoctorSchema = z.object({
   clinicHospitalName: z.string().trim().max(150).nullable().optional(),
   address: z.string().trim().max(250).nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
+  commissionPercentage: z.number().min(0).max(100).optional().default(0),
 });
 
 export type CreateDoctorInput = z.infer<typeof CreateDoctorSchema>;
@@ -355,6 +364,8 @@ export interface DoctorReferralStats {
   doctorId: number;
   doctorName: string;
   specialization: string | null;
+  commissionPercentage?: number;
+  commissionPaisa?: number;
   totalVisits: number;
   uniquePatients: number;
   totalTestsOrdered: number;
@@ -390,6 +401,10 @@ export type CreateVisitOrderInput = z.input<typeof CreateVisitOrderSchema>;
 
 export const UpdateVisitOrderAndInvoiceSchema = z.object({
   visitId: z.number().int().positive(),
+  patientName: z.string().trim().min(1, 'Patient name cannot be empty').optional(),
+  patientDob: z.string().nullable().optional(),
+  patientGender: z.enum(['male', 'female', 'other']).optional(),
+  patientPhone: z.string().trim().max(50).nullable().optional(),
   referringDoctorId: z.number().int().positive().nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
   testIds: z.array(z.number().int().positive()).min(1, 'At least one laboratory test must be selected in the order'),
@@ -403,7 +418,7 @@ export const UpdateVisitOrderAndInvoiceSchema = z.object({
   transactionReference: z.string().max(100).optional(),
 });
 
-export type UpdateVisitOrderAndInvoiceInput = z.infer<typeof UpdateVisitOrderAndInvoiceSchema>;
+export type UpdateVisitOrderAndInvoiceInput = z.input<typeof UpdateVisitOrderAndInvoiceSchema>;
 
 export const RecordPaymentSchema = z.object({
   invoiceId: z.number().int().positive(),
@@ -726,12 +741,223 @@ export interface RestoreExecutionResult {
   error?: string;
 }
 
+// Assets & Purchases Schemas
+export const CreateAssetSchema = z.object({
+  title: z.string().trim().min(2, 'Asset/Purchase title must be at least 2 characters').max(200),
+  category: z.string().trim().max(100).optional().default('general'),
+  amountPaisa: z.number().int().min(0, 'Amount must be positive'),
+  purchaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  purchasedBy: z.enum(['technician', 'doctor']).optional().default('technician'),
+  purchaserName: z.string().trim().max(150).nullable().optional(),
+  invoiceReceiptNo: z.string().trim().max(100).nullable().optional(),
+  vendorName: z.string().trim().max(150).nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+export type CreateAssetInput = z.infer<typeof CreateAssetSchema>;
+
+export const UpdateAssetSchema = CreateAssetSchema.partial().extend({
+  id: z.number().int().positive(),
+});
+export type UpdateAssetInput = z.infer<typeof UpdateAssetSchema>;
+
+// Owner Payout Schema
+export const RecordPayoutSchema = z.object({
+  amountPaisa: z.number().int().positive('Received amount must be greater than zero'),
+  payoutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+export type RecordPayoutInput = z.infer<typeof RecordPayoutSchema>;
+
+// ==========================================
+// Partnership Accounting & Settlement Schemas
+// ==========================================
+
+export const RecordLabCollectionSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  amountPaisa: z.number().int().positive('Collection amount must be greater than zero'),
+  type: z.enum(['payment_received', 'patient_bill', 'credit_adjustment']),
+  collectedBy: z.enum(['investor', 'technician']),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+export type RecordLabCollectionInput = z.infer<typeof RecordLabCollectionSchema>;
+
+export const RecordPartnershipExpenseSchema = z.object({
+  expenseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  category: z.string().trim().min(1, 'Category is required'),
+  description: z.string().trim().min(2, 'Description must be at least 2 characters').max(500),
+  amountPaisa: z.number().int().positive('Expense amount must be greater than zero'),
+  paidBy: z.enum(['lab', 'investor', 'technician']).default('lab'),
+  receiptNo: z.string().trim().max(100).nullable().optional(),
+});
+export type RecordPartnershipExpenseInput = z.infer<typeof RecordPartnershipExpenseSchema>;
+
+export const RecordPartnerPaymentSchema = z.object({
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  amountPaisa: z.number().int().positive('Payment amount must be greater than zero'),
+  partner: z.enum(['technician', 'investor']),
+  type: z.enum(['profit_distribution', 'advance', 'expense_reimbursement', 'adjustment']),
+  method: z.enum(['cash', 'bank_transfer', 'cheque', 'other']).default('cash'),
+  reference: z.string().trim().max(100).nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+export type RecordPartnerPaymentInput = z.infer<typeof RecordPartnerPaymentSchema>;
+
+export const ReversePartnershipTransactionSchema = z.object({
+  transactionId: z.number().int().positive(),
+  reason: z.string().trim().min(3, 'Reversal reason must be at least 3 characters'),
+});
+export type ReversePartnershipTransactionInput = z.infer<typeof ReversePartnershipTransactionSchema>;
+
+export const ClosePartnershipMonthSchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/, 'Month must be in YYYY-MM format'),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+export type ClosePartnershipMonthInput = z.infer<typeof ClosePartnershipMonthSchema>;
+
+export const RecordDoctorCommissionPaymentSchema = z.object({
+  doctorId: z.number().int().positive(),
+  amountPaisa: z.number().int().positive('Commission payment amount must be greater than zero'),
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  paymentMethod: z.enum(['cash', 'bank_transfer', 'cheque', 'other']).default('cash'),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+export type RecordDoctorCommissionPaymentInput = z.infer<typeof RecordDoctorCommissionPaymentSchema>;
+
+export const RecordInvestorCapitalSchema = z.object({
+  amountPaisa: z.number().int().positive('Capital amount must be greater than zero'),
+  type: z.enum(['capital_contribution', 'capital_return']),
+  transactionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+export type RecordInvestorCapitalInput = z.infer<typeof RecordInvestorCapitalSchema>;
+
+export const UpdatePartnershipSplitSchema = z.object({
+  technicianPercentage: z.number().min(0).max(100),
+  investorPercentage: z.number().min(0).max(100).optional(),
+  effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  reason: z.string().trim().max(500).optional(),
+});
+export type UpdatePartnershipSplitInput = z.infer<typeof UpdatePartnershipSplitSchema>;
+
+export interface PartnershipDashboardData {
+  period: {
+    startDate?: string | null;
+    endDate?: string | null;
+    totalSalesPaisa: number;
+    totalCollectedPaisa: number;
+    unpaidPatientBillsPaisa: number;
+    totalDoctorsCommissionPaisa: number;
+    totalAssetsPaisa: number;
+    netProfitPaisa: number;
+    technicianPct: number;
+    investorPct: number;
+    mySharePaisa: number;
+    investorSharePaisa: number;
+    techOutOfPocketPaisa?: number;
+    investorOutOfPocketPaisa?: number;
+    totalReceivedPaisa: number;
+    investorPaidPaisa: number;
+    remainingBalancePaisa: number;
+    investorRemainingBalancePaisa: number;
+  };
+  lifetime: {
+    totalSalesPaisa: number;
+    totalCollectedPaisa: number;
+    totalDoctorsCommissionPaisa: number;
+    totalAssetsPaisa: number;
+    netProfitPaisa: number;
+    mySharePaisa: number;
+    investorSharePaisa: number;
+    techOutOfPocketPaisa?: number;
+    investorOutOfPocketPaisa?: number;
+    totalReceivedPaisa: number;
+    remainingBalancePaisa: number;
+    investorRemainingBalancePaisa?: number;
+  };
+  collection: {
+    billedPaisa: number;
+    collectedPaisa: number;
+    outstandingPaisa: number;
+    collectionDifferencePaisa: number;
+    investorCollectedPaisa: number;
+    technicianCollectedPaisa: number;
+    transferToTechnicianPaisa: number;
+  };
+  doctorCommissions: Array<{
+    doctorId: number;
+    doctorName: string;
+    commissionPercentage: number;
+    referredVisits: number;
+    netSalesPaisa: number;
+    commissionPaisa: number;
+    paidPaisa: number;
+    unpaidPaisa: number;
+  }>;
+  transactions: Array<{
+    id: number;
+    date: string;
+    amountPaisa: number;
+    partner: 'technician' | 'investor';
+    type: 'profit_distribution' | 'advance' | 'expense_reimbursement' | 'adjustment';
+    method: 'cash' | 'bank_transfer' | 'cheque' | 'other';
+    reference?: string | null;
+    notes?: string | null;
+    status: 'active' | 'reversed';
+    reversalReason?: string | null;
+    reversedAt?: string | null;
+    recordedByName?: string | null;
+    createdAt: string;
+  }>;
+  expenses: Array<{
+    id: number;
+    expenseDate: string;
+    category: string;
+    description: string;
+    amountPaisa: number;
+    paidBy: 'lab' | 'investor' | 'technician';
+    receiptNo?: string | null;
+    status?: 'active' | 'reversed';
+    reversalReason?: string | null;
+    recordedByName?: string | null;
+  }>;
+  closedMonths: Array<{
+    id: number;
+    month: string;
+    closedAt: string;
+    netProfitPaisa: number;
+    technicianSharePaisa: number;
+    investorSharePaisa: number;
+    closedByName?: string | null;
+  }>;
+  capital: {
+    investorCapitalPaisa: number;
+    capitalReturnedPaisa: number;
+    capitalRemainingPaisa: number;
+  };
+  payouts: OwnerPayout[];
+  assets?: Array<{
+    id: number;
+    title: string;
+    category: string;
+    amountPaisa: number;
+    purchaseDate: string;
+    purchasedBy: 'technician' | 'doctor';
+    purchaserName?: string | null;
+    invoiceReceiptNo?: string | null;
+    vendorName?: string | null;
+    notes?: string | null;
+    recordedByName?: string | null;
+    createdAt?: string;
+  }>;
+}
+
 // Generic IPC Response envelope
 export interface IpcResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
   code?: string;
+  cancelled?: boolean;
 }
 
 export interface AppInfo {
@@ -870,6 +1096,46 @@ export interface ElectronAPI {
     delete: (id: string) => Promise<IpcResponse<boolean>>;
     printTest: (template: ReportTemplate) => Promise<IpcResponse<any>>;
     exportPdfTest: (template: ReportTemplate) => Promise<IpcResponse<{ success: boolean; filePath?: string }>>;
+  };
+  assets: {
+    list: (query?: AssetFilterQuery) => Promise<IpcResponse<LabAsset[]>>;
+    getById: (id: number) => Promise<IpcResponse<LabAsset | null>>;
+    create: (input: CreateAssetInput) => Promise<IpcResponse<LabAsset>>;
+    update: (input: UpdateAssetInput) => Promise<IpcResponse<LabAsset>>;
+    delete: (id: number) => Promise<IpcResponse<boolean>>;
+    getSummary: (query?: { startDate?: string; endDate?: string }) => Promise<IpcResponse<{ totalCount: number; totalAmountPaisa: number }>>;
+    exportPdf: (query?: AssetFilterQuery) => Promise<IpcResponse<{ success: boolean; filePath?: string }>>;
+  };
+  finance: {
+    getMyPercentageSummary: (query?: { startDate?: string; endDate?: string }) => Promise<IpcResponse<MyPercentageSummary>>;
+    recordPayout: (input: RecordPayoutInput) => Promise<IpcResponse<OwnerPayout>>;
+    deletePayout: (id: number) => Promise<IpcResponse<boolean>>;
+    updateOwnerPercentage: (percentage: number) => Promise<IpcResponse<number>>;
+    getPartnershipDashboard: (query?: { startDate?: string; endDate?: string }) => Promise<IpcResponse<PartnershipDashboardData>>;
+    recordLabCollection: (input: RecordLabCollectionInput) => Promise<IpcResponse<any>>;
+    recordPartnershipExpense: (input: RecordPartnershipExpenseInput) => Promise<IpcResponse<any>>;
+    recordPartnerPayment: (input: RecordPartnerPaymentInput) => Promise<IpcResponse<any>>;
+    reversePartnershipTransaction: (input: ReversePartnershipTransactionInput) => Promise<IpcResponse<boolean>>;
+    closePartnershipMonth: (input: ClosePartnershipMonthInput) => Promise<IpcResponse<any>>;
+    recordDoctorCommissionPayment: (input: RecordDoctorCommissionPaymentInput) => Promise<IpcResponse<any>>;
+    recordInvestorCapital: (input: RecordInvestorCapitalInput) => Promise<IpcResponse<any>>;
+    exportPartnershipStatement: (query?: { startDate?: string; endDate?: string }) => Promise<IpcResponse<{ success: boolean; filePath?: string; cancelled?: boolean }>>;
+  };
+  partnership: {
+    getDashboard: (query?: { startDate?: string; endDate?: string }) => Promise<IpcResponse<PartnershipDashboardData>>;
+    recordCollection: (input: RecordLabCollectionInput) => Promise<IpcResponse<any>>;
+    recordExpense: (input: RecordPartnershipExpenseInput) => Promise<IpcResponse<any>>;
+    reverseExpense: (input: { expenseId: number; reason: string }) => Promise<IpcResponse<boolean>>;
+    recordPayment: (input: RecordPartnerPaymentInput) => Promise<IpcResponse<any>>;
+    reverseTransaction: (input: ReversePartnershipTransactionInput) => Promise<IpcResponse<boolean>>;
+    closeMonth: (input: ClosePartnershipMonthInput) => Promise<IpcResponse<any>>;
+    recordDoctorCommissionPayment: (input: RecordDoctorCommissionPaymentInput) => Promise<IpcResponse<any>>;
+    recordInvestorCapital: (input: RecordInvestorCapitalInput) => Promise<IpcResponse<any>>;
+    exportStatement: (query?: { startDate?: string; endDate?: string }) => Promise<IpcResponse<{ success: boolean; filePath?: string; cancelled?: boolean }>>;
+    updateSplit: (input: UpdatePartnershipSplitInput) => Promise<IpcResponse<number>>;
+    updateTransaction: (input: { id: number; paymentDate: string; amountPaisa: number; partner?: 'technician' | 'investor'; type?: string; method?: string; reference?: string; notes?: string; editReason?: string }) => Promise<IpcResponse<boolean>>;
+    deleteTransaction: (id: number) => Promise<IpcResponse<boolean>>;
+    clearTechnicianPayouts: () => Promise<IpcResponse<{ deletedCount: number }>>;
   };
   app: {
     getInfo: () => Promise<IpcResponse<AppInfo>>;

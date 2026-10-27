@@ -38,6 +38,7 @@ export class DoctorStatsRepository {
         d.id as doctorId,
         d.full_name as doctorName,
         d.specialization,
+        COALESCE(d.commission_percentage, 0) as commissionPercentage,
         COUNT(DISTINCT v.id) as totalVisits,
         COUNT(DISTINCT v.patient_id) as uniquePatients,
         COALESCE(SUM(item_counts.test_count), 0) as totalTestsOrdered,
@@ -55,7 +56,7 @@ export class DoctorStatsRepository {
         GROUP BY visit_id
       ) item_counts ON v.id = item_counts.visit_id
       WHERE ${conditions.join(' AND ')}
-      GROUP BY d.id, d.full_name, d.specialization
+      GROUP BY d.id, d.full_name, d.specialization, d.commission_percentage
       ORDER BY totalVisits DESC, grossRevenuePaisa DESC
     `;
 
@@ -67,6 +68,7 @@ export class DoctorStatsRepository {
         doctorId: number;
         doctorName: string;
         specialization: string | null;
+        commissionPercentage: number;
         totalVisits: number;
         uniquePatients: number;
         totalTestsOrdered: number;
@@ -78,15 +80,21 @@ export class DoctorStatsRepository {
       }>;
 
       for (const r of rows) {
+        const netRev = Number(r.netRevenuePaisa);
+        const commPct = Number(r.commissionPercentage || 0);
+        const commPaisa = Math.round((netRev * commPct) / 100);
+
         result.push({
           doctorId: r.doctorId,
           doctorName: r.doctorName,
           specialization: r.specialization,
+          commissionPercentage: commPct,
+          commissionPaisa: commPaisa,
           totalVisits: Number(r.totalVisits),
           uniquePatients: Number(r.uniquePatients),
           totalTestsOrdered: Number(r.totalTestsOrdered),
           grossRevenuePaisa: Number(r.grossRevenuePaisa),
-          netRevenuePaisa: Number(r.netRevenuePaisa),
+          netRevenuePaisa: netRev,
           totalDiscountPaisa: Number(r.totalDiscountPaisa),
           totalPaidPaisa: Number(r.totalPaidPaisa),
           totalBalancePaisa: Number(r.totalBalancePaisa),
@@ -136,6 +144,8 @@ export class DoctorStatsRepository {
           doctorId: 0,
           doctorName: 'Self / Direct (No Doctor Selected)',
           specialization: 'Direct Patient / Walk-in',
+          commissionPercentage: 0,
+          commissionPaisa: 0,
           totalVisits: Number(unassignedRow.totalVisits),
           uniquePatients: Number(unassignedRow.uniquePatients),
           totalTestsOrdered: Number(unassignedRow.totalTestsOrdered),

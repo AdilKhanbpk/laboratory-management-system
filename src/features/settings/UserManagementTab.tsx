@@ -3,7 +3,7 @@ import { SafeUser } from '../../types';
 import { Button } from '../../components/common/Button';
 import { Alert } from '../../components/common/Alert';
 import { formatDateTime } from '../../lib/utils';
-import { UserPlus, X } from 'lucide-react';
+import { UserPlus, X, Eye, EyeOff } from 'lucide-react';
 
 /*
  * Same tokens as the rest of the app: primary #0F766E / #115E59, text #1F2937,
@@ -20,7 +20,10 @@ const AVAILABLE_MODULES: Array<{ id: string; label: string; description: string 
   { id: 'results', label: 'Specimens and results', description: 'Accession specimens, enter results, review and finalize reports' },
   { id: 'doctors', label: 'Referring doctors', description: 'Add and update the referring doctor directory' },
   { id: 'tests', label: 'Test catalog and ranges', description: 'Set up tests, packages, prices and reference ranges' },
+  { id: 'assets', label: 'Assets & purchases', description: 'Record lab purchases, equipment and export expense reports' },
   { id: 'reports', label: 'Doctor statistics', description: 'View referral volumes and financial totals by doctor' },
+  { id: 'report-designer', label: 'Report design', description: 'Customize lab report templates, headers, footers and styling' },
+  { id: 'my-percentage', label: 'My percentage', description: 'Calculate net profits, track owner percentages and record payouts' },
   { id: 'backup', label: 'Backup and recovery', description: 'Create database backups and restore them' },
   { id: 'audit', label: 'Audit log', description: 'See staff sign-ins and billing changes' },
   { id: 'settings', label: 'Settings', description: 'Change laboratory details, logo and screen lock time' },
@@ -96,12 +99,15 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
   const [formUsername, setFormUsername] = useState('');
   const [formFullName, setFormFullName] = useState('');
   const [formPassword, setFormPassword] = useState('');
+  const [showFormPassword, setShowFormPassword] = useState(false);
   const [formRole, setFormRole] = useState<'admin' | 'operator'>('operator');
   const [formPermissions, setFormPermissions] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
 
   const isAdmin = currentUser.role === 'admin';
@@ -131,6 +137,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
     setFormUsername('');
     setFormFullName('');
     setFormPassword('');
+    setShowFormPassword(false);
     setFormRole('operator');
     setFormPermissions(['new-visit', 'billing', 'results']);
     setErrorMsg(null);
@@ -254,6 +261,8 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
     setPasswordTargetUser(user);
     setNewPassword('');
     setConfirmPassword('');
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
     setErrorMsg(null);
     setSuccessMsg(null);
   };
@@ -576,15 +585,27 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
                 </div>
                 <div>
                   <FieldLabel htmlFor="new-password">Password</FieldLabel>
-                  <input
-                    id="new-password"
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="At least 6 characters"
-                    value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                    className={inputCls}
-                  />
+                  <div className="relative">
+                    <input
+                      id="new-password"
+                      type={showFormPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      placeholder="At least 6 characters"
+                      value={formPassword}
+                      onChange={(e) => setFormPassword(e.target.value)}
+                      className={`${inputCls} pr-10`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowFormPassword((prev) => !prev)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#1F2937] p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                      aria-label={showFormPassword ? 'Hide password' : 'Show password'}
+                      title={showFormPassword ? 'Hide password' : 'Show password'}
+                      tabIndex={-1}
+                    >
+                      {showFormPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -634,28 +655,52 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({ currentUse
 
               <div>
                 <FieldLabel htmlFor="pw-new">New password</FieldLabel>
-                <input
-                  id="pw-new"
-                  type="password"
-                  autoFocus
-                  autoComplete="new-password"
-                  placeholder="At least 6 characters"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className={inputCls}
-                />
+                <div className="relative">
+                  <input
+                    id="pw-new"
+                    type={showNewPassword ? 'text' : 'password'}
+                    autoFocus
+                    autoComplete="new-password"
+                    placeholder="At least 6 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className={`${inputCls} pr-10`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((prev) => !prev)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#1F2937] p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                    aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                    title={showNewPassword ? 'Hide password' : 'Show password'}
+                    tabIndex={-1}
+                  >
+                    {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
               </div>
 
               <div>
                 <FieldLabel htmlFor="pw-confirm">Confirm new password</FieldLabel>
-                <input
-                  id="pw-confirm"
-                  type="password"
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className={inputCls}
-                />
+                <div className="relative">
+                  <input
+                    id="pw-confirm"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={`${inputCls} pr-10`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#1F2937] p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
               </div>
             </div>
             {modalFooter('Change password', passwordSubmitting)}

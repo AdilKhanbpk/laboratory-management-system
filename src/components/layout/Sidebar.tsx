@@ -1,6 +1,7 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
 import { SafeUser } from '../../types';
+import { canUserAccessTab } from '../../lib/permissions';
 import {
   LayoutDashboard,
   Stethoscope,
@@ -14,6 +15,8 @@ import {
   History as HistoryIcon,
   Terminal,
   Palette,
+  ShoppingBag,
+  Percent,
 } from 'lucide-react';
 
 export type NavTab =
@@ -23,8 +26,10 @@ export type NavTab =
   | 'results'
   | 'doctors'
   | 'tests'
+  | 'assets'
   | 'reports'
   | 'report-designer'
+  | 'my-percentage'
   | 'backup'
   | 'audit'
   | 'settings'
@@ -68,12 +73,14 @@ const navGroups: NavGroup[] = [
       { id: 'results', label: 'Specimens and results', icon: <FileCheck2 className="w-4 h-4" /> },
       { id: 'doctors', label: 'Referring doctors', icon: <Stethoscope className="w-4 h-4" /> },
       { id: 'tests', label: 'Test catalog', icon: <FlaskConical className="w-4 h-4" /> },
+      { id: 'assets', label: 'Assets & purchases', icon: <ShoppingBag className="w-4 h-4" /> },
       { id: 'report-designer', label: 'Report design', icon: <Palette className="w-4 h-4" /> },
     ],
   },
   {
     title: 'Administration',
     items: [
+      { id: 'my-percentage', label: 'My percentage', icon: <Percent className="w-4 h-4" /> },
       { id: 'reports', label: 'Doctor statistics', icon: <TrendingUp className="w-4 h-4" /> },
       { id: 'audit', label: 'Audit log', icon: <HistoryIcon className="w-4 h-4" /> },
       { id: 'backup', label: 'Backup and recovery', icon: <HardDrive className="w-4 h-4" /> },
@@ -84,7 +91,7 @@ const navGroups: NavGroup[] = [
 
 const itemClass = (isActive: boolean, isCollapsed: boolean) =>
   cn(
-    'w-full flex items-center h-9 rounded-md text-[13px] text-left transition-colors',
+    'w-full flex items-center h-[34px] rounded-md text-[13px] text-left transition-colors',
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1 focus-visible:ring-offset-[#111827]',
     isCollapsed ? 'justify-center' : 'gap-3 px-3',
     isActive
@@ -99,13 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   user,
 }) => {
   // Filter navigation items by role and permissions
-  const canSee = (id: NavTab) => {
-    if (!user || user.role === 'admin') return true;
-    if (id === 'dashboard') return true;
-    if (!user.permissions || user.permissions === 'all') return true;
-    const allowed = user.permissions.split(',').map((p) => p.trim());
-    return allowed.includes(id);
-  };
+  const canSee = (id: NavTab) => canUserAccessTab(id, user || null);
 
   const visibleGroups = navGroups
     .map((group) => ({ ...group, items: group.items.filter((item) => canSee(item.id)) }))
@@ -118,16 +119,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
         isCollapsed ? 'w-16' : 'w-60'
       )}
     >
-      <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
+      <nav
+        className="flex-1 overflow-y-auto px-3 py-4 sidebar-nav-container no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        aria-label="Main navigation"
+      >
         {visibleGroups.map((group, index) => (
-          <div key={group.title} className={cn(index > 0 && 'mt-5')}>
+          <div key={group.title} className={cn(index > 0 && 'mt-3')}>
             {isCollapsed ? (
               index > 0 && <div className="mb-3 border-t border-white/10" />
             ) : (
-              <p className="px-3 mb-1.5 text-xs font-medium text-[#94A3B8]">{group.title}</p>
+              <p className={`px-3 mb-2 ${group.title === 'Front desk' ? 'mt-3' : 'mt-7'} text-[11px] font-semibold uppercase tracking-wider text-[#94A3B8]`}>
+                {group.title}
+              </p>
             )}
 
-            <ul className="space-y-0.5">
+            <ul className="space-y-[2px]">
               {group.items.map((item) => {
                 const isActive = activeTab === item.id;
                 return (
@@ -151,7 +157,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </nav>
 
-      <div className="border-t border-white/10 px-3 py-3">
+      <div className="border-t border-white/10 px-2.5 py-2">
         <button
           type="button"
           onClick={() => onSelectTab('developer')}
@@ -164,7 +170,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {!isCollapsed && <span className="truncate">Developer portal</span>}
         </button>
 
-        {!isCollapsed && <p className="mt-3 px-3 text-xs text-[#94A3B8]">Version 1.0.0</p>}
+        {!isCollapsed && <p className="mt-1 px-3 text-xs text-[#94A3B8]">Version 1.0.0</p>}
       </div>
     </aside>
   );

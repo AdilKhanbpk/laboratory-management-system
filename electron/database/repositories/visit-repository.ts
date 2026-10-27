@@ -443,6 +443,31 @@ export class VisitRepository {
         input.visitId
       );
 
+      // 5b. Update Patient Details (Name, Age/DOB, Gender, Phone) if provided
+      if (
+        input.patientName !== undefined ||
+        input.patientDob !== undefined ||
+        input.patientGender !== undefined ||
+        input.patientPhone !== undefined
+      ) {
+        const existingPatient = db.prepare('SELECT * FROM patients WHERE id = ?').get(visit.patient_id) as any;
+        if (existingPatient) {
+          const updatedName = input.patientName ? input.patientName.trim() : existingPatient.full_name;
+          const updatedDob = input.patientDob !== undefined ? input.patientDob : existingPatient.date_of_birth;
+          const updatedGender = input.patientGender || existingPatient.gender;
+          const updatedPhone =
+            input.patientPhone !== undefined
+              ? input.patientPhone ? input.patientPhone.trim() : null
+              : existingPatient.phone_number;
+
+          db.prepare(`
+            UPDATE patients
+            SET full_name = ?, date_of_birth = ?, gender = ?, phone_number = ?, updated_at = ?
+            WHERE id = ?
+          `).run(updatedName, updatedDob, updatedGender, updatedPhone, now, visit.patient_id);
+        }
+      }
+
       // 6. Synchronize Order Items
       const existingOrderItems = db
         .prepare('SELECT * FROM order_items WHERE visit_id = ?')

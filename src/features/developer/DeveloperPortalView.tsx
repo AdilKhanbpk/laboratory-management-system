@@ -526,6 +526,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 import { LegacyTestImporterCard } from './LegacyTestImporterCard';
@@ -615,6 +617,7 @@ export const DeveloperPortalView: React.FC<DeveloperPortalViewProps> = ({ onNavi
   // Developer authentication gate
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [inputPassword, setInputPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Dynamic key state
@@ -767,16 +770,28 @@ export const DeveloperPortalView: React.FC<DeveloperPortalViewProps> = ({ onNavi
               <label htmlFor="dev-password" className="block text-[13px] font-medium mb-1.5">
                 Developer password
               </label>
-              <input
-                id="dev-password"
-                type="password"
-                autoFocus
-                required
-                autoComplete="off"
-                value={inputPassword}
-                onChange={(e) => setInputPassword(e.target.value)}
-                className={`${inputClass} h-10`}
-              />
+              <div className="relative">
+                <input
+                  id="dev-password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoFocus
+                  required
+                  autoComplete="off"
+                  value={inputPassword}
+                  onChange={(e) => setInputPassword(e.target.value)}
+                  className={`${inputClass} h-10 pr-10`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#1F2937] p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-between gap-3 pt-1">

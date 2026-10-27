@@ -376,4 +376,72 @@ describe('Integration: Visit, Order & Billing Repository', () => {
     expect(updatedDetail.payments[1].amount).toBe(100000);
     expect(updatedDetail.payments[1].receipt_number).toMatch(/^RCT-\d{4}-\d{5}$/);
   });
+
+  it('updates patient name, age/dob, phone, and referring doctor when editing visit order and invoice', () => {
+    const patient = patientRepo.createPatient({
+      fullName: 'Muhammad Ali',
+      gender: 'male',
+      dateOfBirth: '1985-06-15',
+      phoneNumber: '+92-300-1122334',
+    });
+    const doctorA = doctorRepo.createDoctor({
+      fullName: 'Dr. Tariq Mahmood',
+      specialization: 'Internal Medicine',
+    });
+    const doctorB = doctorRepo.createDoctor({
+      fullName: 'Dr. Saad Khan',
+      specialization: 'Pathology',
+    });
+    const cbc = catalogRepo.createTest({
+      testCode: 'CBC_EDIT',
+      testName: 'Complete Blood Count',
+      category: 'Hematology',
+      pricePaisa: 50000,
+    });
+
+    // 1. Create a visit with initial patient and doctor
+    const initialVisit = visitRepo.createVisitWithOrder(
+      {
+        patientId: patient.id,
+        referringDoctorId: doctorA.id,
+        testIds: [cbc.id],
+        paidAmountPaisa: 50000,
+      },
+      operatorId
+    );
+
+    expect(initialVisit.patient.full_name).toBe('Muhammad Ali');
+    expect(initialVisit.visit.referring_doctor_id).toBe(doctorA.id);
+
+    // 2. Edit visit: update patient name, dob, phone, and doctor to doctorB
+    const updatedDetail = visitRepo.updateVisitOrderAndInvoice(
+      {
+        visitId: initialVisit.visit.id,
+        patientName: 'Muhammad Ali Jr.',
+        patientDob: '1995-05-15',
+        patientGender: 'male',
+        patientPhone: '0300-9998877',
+        referringDoctorId: doctorB.id,
+        testIds: [cbc.id],
+        discountType: 'none',
+        discountValue: 0,
+        additionalPaymentPaisa: 0,
+      },
+      operatorId
+    );
+
+    // 3. Verify updated patient details in the returned visit detail
+    expect(updatedDetail.patient.full_name).toBe('Muhammad Ali Jr.');
+    expect(updatedDetail.patient.date_of_birth).toBe('1995-05-15');
+    expect(updatedDetail.patient.phone_number).toBe('0300-9998877');
+    expect(updatedDetail.visit.referring_doctor_id).toBe(doctorB.id);
+
+    // 4. Query visit directly to verify persistence in database
+    const reloaded = visitRepo.getVisitById(initialVisit.visit.id);
+    expect(reloaded).not.toBeNull();
+    expect(reloaded!.patient.full_name).toBe('Muhammad Ali Jr.');
+    expect(reloaded!.patient.date_of_birth).toBe('1995-05-15');
+    expect(reloaded!.patient.phone_number).toBe('0300-9998877');
+    expect(reloaded!.visit.referring_doctor_id).toBe(doctorB.id);
+  });
 });

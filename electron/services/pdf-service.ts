@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog } from 'electron';
 import fs from 'fs';
 import { FullDiagnosticReport, ReportTemplate, HospitalSettings } from '../types/ipc';
+import { LabAsset } from '../database/repositories/asset-repository';
 import { DEFAULT_REPORT_TEMPLATE } from '../database/repositories/template-repository';
 
 function escapeHtml(str: string | null | undefined): string {
@@ -622,6 +623,7 @@ export class PdfService {
         clinic_hospital_name: null,
         address: null,
         notes: null,
+        commission_percentage: 0,
         is_active: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -686,5 +688,496 @@ export class PdfService {
       ],
       template,
     };
+  }
+
+  /**
+   * Generates clean printable HTML for Laboratory Assets & Purchases report.
+   */
+  public static generateAssetsReportHtml(
+    assets: LabAsset[],
+    hospital: HospitalSettings,
+    dateRangeText: string,
+    summary: { totalCount: number; totalAmountPaisa: number; technicianAmountPaisa?: number; doctorAmountPaisa?: number }
+  ): string {
+    const totalPkr = (summary.totalAmountPaisa / 100).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const techPkr = ((summary.technicianAmountPaisa || 0) / 100).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    const docPkr = ((summary.doctorAmountPaisa || 0) / 100).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    const rowsHtml = assets
+      .map((a, idx) => {
+        const itemPkr = (a.amount_paisa / 100).toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+        const isTech = a.purchased_by === 'technician';
+        const purchaserLabel = isTech ? 'Technician' : 'Doctor';
+        const purchaserColor = isTech ? '#0f766e' : '#2563eb';
+        return `
+          <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 7px 10px; font-size: 11px; white-space: nowrap;">${escapeHtml(a.purchase_date)}</td>
+            <td style="padding: 7px 10px; font-size: 11px; font-weight: 600; color: #1e293b;">${escapeHtml(a.title)}</td>
+            <td style="padding: 7px 10px; font-size: 11px; white-space: nowrap;">
+              <span style="font-weight: 600; color: ${purchaserColor};">${purchaserLabel}</span>
+              ${a.purchaser_name ? `<br><span style="font-size: 10px; color: #64748b;">${escapeHtml(a.purchaser_name)}</span>` : ''}
+            </td>
+            <td style="padding: 7px 10px; font-size: 11px; text-transform: capitalize; color: #475569;">${escapeHtml(a.category || 'General')}</td>
+            <td style="padding: 7px 10px; font-size: 11px; color: #475569;">${escapeHtml(a.vendor_name || '—')}</td>
+            <td style="padding: 7px 10px; font-size: 11px; color: #475569;">${escapeHtml(a.invoice_receipt_no || '—')}</td>
+            <td style="padding: 7px 10px; font-size: 10px; color: #64748b; max-width: 140px; overflow-wrap: anywhere;">${escapeHtml(a.notes || '—')}</td>
+            <td style="padding: 7px 10px; font-size: 11px; font-weight: 700; text-align: right; color: #0f766e; white-space: nowrap;">PKR ${itemPkr}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Assets and Purchases Report</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 10mm;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Arial, -apple-system, sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      padding: 12px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .header {
+      border-bottom: 2px solid #0f766e;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .lab-name {
+      font-size: 18px;
+      font-weight: bold;
+      color: #0f766e;
+    }
+    .lab-address {
+      font-size: 11px;
+      color: #475569;
+      margin-top: 2px;
+    }
+    .report-meta {
+      text-align: right;
+    }
+    .report-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #0f172a;
+    }
+    .report-date {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+    .summary-bar {
+      display: flex;
+      gap: 16px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+    }
+    .summary-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .summary-label {
+      font-size: 10px;
+      color: #64748b;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .summary-val {
+      font-size: 15px;
+      font-weight: bold;
+      color: #0f766e;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    th {
+      background: #0f766e;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: left;
+      padding: 8px 10px;
+    }
+    th.text-right {
+      text-align: right;
+    }
+    .footer {
+      margin-top: 24px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="lab-name">${escapeHtml(hospital.hospital_name || 'Laboratory')}</div>
+      <div class="lab-address">${escapeHtml(hospital.address || '')} ${hospital.phone_primary ? `• Tel: ${escapeHtml(hospital.phone_primary)}` : ''}</div>
+    </div>
+    <div class="report-meta">
+      <div class="report-title">ASSETS & PURCHASES REPORT</div>
+      <div class="report-date">Period: ${escapeHtml(dateRangeText)}</div>
+    </div>
+  </div>
+
+  <div class="summary-bar">
+    <div class="summary-item">
+      <span class="summary-label">Total Entries</span>
+      <span class="summary-val">${summary.totalCount} items</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Total Purchases / Expenses</span>
+      <span class="summary-val">PKR ${totalPkr}</span>
+    </div>
+    ${(summary.technicianAmountPaisa || 0) > 0 ? `
+    <div class="summary-item">
+      <span class="summary-label">Technician Out-of-Pocket</span>
+      <span class="summary-val" style="color: #0f766e;">PKR ${techPkr}</span>
+    </div>` : ''}
+    ${(summary.doctorAmountPaisa || 0) > 0 ? `
+    <div class="summary-item">
+      <span class="summary-label">Doctor / Lab Purchases</span>
+      <span class="summary-val" style="color: #2563eb;">PKR ${docPkr}</span>
+    </div>` : ''}
+    <div class="summary-item">
+      <span class="summary-label">Printed Date</span>
+      <span class="summary-val" style="font-size: 12px; color: #475569; margin-top: 3px;">${new Date().toLocaleDateString()}</span>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 85px;">Date</th>
+        <th>Asset / Item Title</th>
+        <th style="width: 100px;">Purchased By</th>
+        <th style="width: 90px;">Category</th>
+        <th style="width: 100px;">Vendor</th>
+        <th style="width: 80px;">Receipt #</th>
+        <th>Notes</th>
+        <th class="text-right" style="width: 110px;">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+    <tfoot>
+      <tr style="background: #f8fafc; font-weight: bold; border-top: 2px solid #0f766e;">
+        <td colspan="7" style="padding: 10px; text-align: right; font-size: 12px;">Total Purchases:</td>
+        <td style="padding: 10px; text-align: right; font-size: 13px; color: #0f766e; white-space: nowrap;">PKR ${totalPkr}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="footer">
+    <span>Offline Laboratory Management System • Confidential Financial Record</span>
+    <span>Page 1 of 1</span>
+  </div>
+</body>
+</html>`;
+  }
+
+  /**
+   * Exports the assets & purchases list to a standalone PDF report file.
+   */
+  public static async exportAssetsReportPdf(
+    assets: LabAsset[],
+    hospital: HospitalSettings,
+    dateRangeText: string,
+    summary: { totalCount: number; totalAmountPaisa: number; technicianAmountPaisa?: number; doctorAmountPaisa?: number },
+    mainWindow?: BrowserWindow | null
+  ): Promise<{ success: boolean; filePath?: string; cancelled?: boolean; error?: string }> {
+    try {
+      const now = new Date().toISOString().split('T')[0];
+      const defaultFilename = `Assets_Purchases_Report_${now}.pdf`;
+
+      const { filePath, canceled } = await dialog.showSaveDialog(mainWindow || (undefined as any), {
+        title: 'Save Assets & Purchases PDF Report',
+        defaultPath: defaultFilename,
+        filters: [{ name: 'PDF Documents', extensions: ['pdf'] }],
+      });
+
+      if (canceled || !filePath) {
+        return { success: false, cancelled: true };
+      }
+
+      const html = this.generateAssetsReportHtml(assets, hospital, dateRangeText, summary);
+
+      const printWindow = new BrowserWindow({
+        show: false,
+        width: 800,
+        height: 1100,
+        webPreferences: {
+          offscreen: true,
+        },
+      });
+
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const pdfBuffer = await printWindow.webContents.printToPDF({
+        pageSize: 'A4',
+        printBackground: true,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        preferCSSPageSize: true,
+      });
+
+      printWindow.destroy();
+
+      await fs.promises.writeFile(filePath, pdfBuffer);
+
+      return { success: true, filePath };
+    } catch (err: any) {
+      console.error('Assets report PDF error:', err);
+      return { success: false, error: err?.message || 'Failed to export assets report PDF.' };
+    }
+  }
+
+  /**
+   * Generates clean HTML for Laboratory Partnership Statement.
+   */
+  public static generatePartnershipStatementHtml(
+    data: any,
+    hospital: HospitalSettings,
+    dateRangeText: string
+  ): string {
+    const fmt = (paisa?: number) => {
+      const val = (paisa || 0) / 100;
+      return `Rs. ${val.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    };
+
+    const p = data.period || {};
+    const techBal = p.remainingBalancePaisa || 0;
+    const invBal = p.investorRemainingBalancePaisa || 0;
+    const statusNote =
+      techBal > 0
+        ? `Investor owes Technician ${fmt(techBal)}`
+        : techBal < 0
+        ? `Technician balance is ahead by ${fmt(Math.abs(techBal))}`
+        : 'All partner accounts are fully settled';
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Partnership Settlement Statement</title>
+  <style>
+    @page { size: A4; margin: 15mm; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #1e293b; font-size: 13px; line-height: 1.5; margin: 0; padding: 0; }
+    .header { border-bottom: 2px solid #0f766e; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .title { font-size: 20px; font-weight: bold; color: #0f766e; margin: 0 0 4px 0; }
+    .subtitle { font-size: 13px; color: #64748b; margin: 0; }
+    .period-badge { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 4px 10px; border-radius: 6px; font-weight: 600; font-size: 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; }
+    .card-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: bold; margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+    th { background: #f1f5f9; color: #475569; font-weight: 600; text-align: left; padding: 8px 12px; border: 1px solid #cbd5e1; }
+    td { padding: 8px 12px; border: 1px solid #cbd5e1; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .total-row { background: #f8fafc; font-weight: bold; }
+    .highlight-row { background: #f0fdfa; font-weight: bold; color: #0f766e; }
+    .banner { background: #f8fafc; border: 2px dashed #0f766e; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; text-align: center; font-size: 15px; font-weight: bold; color: #0f766e; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 50px; }
+    .sig-line { border-top: 1px solid #94a3b8; padding-top: 8px; text-align: center; font-size: 12px; color: #475569; font-weight: 500; }
+    .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1 class="title">${escapeHtml(hospital.hospital_name || 'Laboratory')}</h1>
+      <p class="subtitle">${escapeHtml(hospital.address || '')} ${hospital.phone_primary ? `· Tel: ${escapeHtml(hospital.phone_primary)}` : ''}</p>
+      <p class="subtitle" style="margin-top: 4px; font-weight: 600; color: #334155;">PARTNERSHIP PROFIT &amp; SETTLEMENT STATEMENT</p>
+    </div>
+    <div style="text-align: right;">
+      <span class="period-badge">${escapeHtml(dateRangeText)}</span>
+      <p class="subtitle" style="margin-top: 6px;">Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
+    </div>
+  </div>
+
+  <div class="banner">
+    ${escapeHtml(statusNote)}
+  </div>
+
+  <h3 style="font-size: 14px; margin-bottom: 8px; color: #0f766e;">1. Laboratory Profit &amp; Loss Calculation</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Accounting Item</th>
+        <th class="num">Amount (PKR)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Gross Sales / Patient Bills Issued</td>
+        <td class="num">${fmt(p.totalSalesPaisa)}</td>
+      </tr>
+      <tr>
+        <td>Less: Referring Doctors Commissions</td>
+        <td class="num" style="color: #dc2626;">- ${fmt(p.totalDoctorsCommissionPaisa)}</td>
+      </tr>
+      <tr>
+        <td>Less: Laboratory Expenses &amp; Purchases</td>
+        <td class="num" style="color: #dc2626;">- ${fmt(p.totalAssetsPaisa)}</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>= Net Distributable Profit</td>
+        <td class="num" style="font-size: 14px;">${fmt(p.netProfitPaisa)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size: 14px; margin-bottom: 8px; color: #0f766e;">2. Partner Profit Split &amp; Settlement</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Partner</th>
+        <th style="text-align: center;">Share %</th>
+        <th class="num">Calculated Share</th>
+        <th class="num">Paid / Withdrawn</th>
+        <th class="num">Outstanding Balance</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Technician</strong></td>
+        <td style="text-align: center;">${p.technicianPct || 50}%</td>
+        <td class="num">${fmt(p.mySharePaisa)}</td>
+        <td class="num">${fmt(p.totalReceivedPaisa)}</td>
+        <td class="num" style="font-weight: bold; color: ${techBal > 0 ? '#0f766e' : '#1e293b'};">${fmt(techBal)}</td>
+      </tr>
+      <tr>
+        <td><strong>Investor</strong></td>
+        <td style="text-align: center;">${p.investorPct || 50}%</td>
+        <td class="num">${fmt(p.investorSharePaisa)}</td>
+        <td class="num">${fmt(p.investorPaidPaisa)}</td>
+        <td class="num" style="font-weight: bold;">${fmt(invBal)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size: 14px; margin-bottom: 8px; color: #0f766e;">3. Cash &amp; Collection Summary</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Billed Amount</th>
+        <th class="num">Collected Cash</th>
+        <th class="num">Unpaid Bills</th>
+        <th class="num">Transferred to Technician</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>${fmt(p.totalSalesPaisa)}</td>
+        <td class="num" style="color: #166534; font-weight: 600;">${fmt(p.totalCollectedPaisa)}</td>
+        <td class="num" style="color: #dc2626;">${fmt(p.unpaidPatientBillsPaisa)}</td>
+        <td class="num">${fmt(p.totalReceivedPaisa)}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="signatures">
+    <div>
+      <div class="sig-line">Laboratory Technician Signature &amp; Date</div>
+    </div>
+    <div>
+      <div class="sig-line">Investor / Partner Signature &amp; Date</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>${escapeHtml(hospital.hospital_name || 'Laboratory Management System')} · Confidential Partnership Document</span>
+    <span>Page 1 of 1</span>
+  </div>
+</body>
+</html>`;
+  }
+
+  /**
+   * Exports the Partnership Statement to a standalone PDF.
+   */
+  public static async exportPartnershipStatementPdf(
+    data: any,
+    hospital: HospitalSettings,
+    dateRangeText: string,
+    mainWindow?: BrowserWindow | null
+  ): Promise<{ success: boolean; filePath?: string; cancelled?: boolean; error?: string }> {
+    try {
+      const now = new Date().toISOString().split('T')[0];
+      const defaultFilename = `Partnership_Statement_${now}.pdf`;
+
+      const { filePath, canceled } = await dialog.showSaveDialog(mainWindow || (undefined as any), {
+        title: 'Save Partnership Settlement Statement PDF',
+        defaultPath: defaultFilename,
+        filters: [{ name: 'PDF Documents', extensions: ['pdf'] }],
+      });
+
+      if (canceled || !filePath) {
+        return { success: false, cancelled: true };
+      }
+
+      const html = this.generatePartnershipStatementHtml(data, hospital, dateRangeText);
+
+      const printWindow = new BrowserWindow({
+        show: false,
+        width: 800,
+        height: 1100,
+        webPreferences: {
+          offscreen: true,
+        },
+      });
+
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const pdfBuffer = await printWindow.webContents.printToPDF({
+        pageSize: 'A4',
+        printBackground: true,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        preferCSSPageSize: true,
+      });
+
+      printWindow.destroy();
+
+      await fs.promises.writeFile(filePath, pdfBuffer);
+
+      return { success: true, filePath };
+    } catch (err: any) {
+      console.error('Partnership statement PDF error:', err);
+      return { success: false, error: err?.message || 'Failed to export statement PDF.' };
+    }
   }
 }

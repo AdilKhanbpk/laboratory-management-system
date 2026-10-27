@@ -95,7 +95,7 @@ describe('Prompt 5: Database Backup & Destructive Restore Lifecycle', () => {
     expect(inspection.isValid).toBe(true);
     expect(inspection.metadata).toBeDefined();
     expect(inspection.metadata?.totalPatients).toBe(1);
-    expect(inspection.metadata?.schemaVersion).toBe(8);
+    expect(inspection.metadata?.schemaVersion).toBe(11);
     expect(inspection.metadata?.checksum).toBe(backup.checksum);
   });
 

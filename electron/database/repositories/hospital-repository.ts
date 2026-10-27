@@ -14,6 +14,7 @@ export interface HospitalSettings {
   timezone: string;
   inactivity_timeout_minutes: number;
   default_backup_path?: string | null;
+  owner_percentage?: number;
   created_at: string;
   updated_at: string;
 }
@@ -117,6 +118,7 @@ export class HospitalRepository {
         timezone = ?,
         inactivity_timeout_minutes = ?,
         default_backup_path = ?,
+        owner_percentage = COALESCE(?, owner_percentage),
         updated_at = ?
       WHERE id = 1
     `).run(
@@ -131,6 +133,7 @@ export class HospitalRepository {
       updated.timezone,
       updated.inactivity_timeout_minutes,
       updated.default_backup_path !== undefined ? updated.default_backup_path : current.default_backup_path || null,
+      updated.owner_percentage !== undefined ? updated.owner_percentage : null,
       updated.updated_at
     );
 

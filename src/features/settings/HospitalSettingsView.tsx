@@ -39,7 +39,8 @@ const FALLBACK_USER = {
 } as SafeUser;
 
 const inputCls =
-  'h-9 w-full px-3 rounded-lg border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] placeholder:text-slate-400 focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E] disabled:bg-[#F8FAFC] disabled:text-[#64748B] disabled:cursor-not-allowed aria-[invalid=true]:border-[#DC2626] aria-[invalid=true]:focus:ring-[#DC2626]';
+  'h-9 w-full px-3 rounded-lg border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] placeholder:text-slate-400 focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E] disabled:bg-[#F8FAFC] disabled:text-[#64748B] disabled:cursor-not-allowed aria-[invalid=true]:border-[#DC2626] aria-[invalid=true]:focus:ring-[#DC2626] ' +
+  '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:hidden [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:hidden';
 
 const Field: React.FC<{
   label: string;
@@ -192,6 +193,25 @@ export const HospitalSettingsView: React.FC<HospitalSettingsViewProps> = ({
         : 'border-transparent text-[#64748B] hover:text-[#1F2937]'
     }`;
 
+  // Check permission
+  const effectiveUser = currentUser || FALLBACK_USER;
+  const isAllowed =
+    effectiveUser.role === 'admin' ||
+    !effectiveUser.permissions ||
+    effectiveUser.permissions === 'all' ||
+    effectiveUser.permissions.split(',').map((p) => p.trim()).includes('settings');
+
+  if (!isAllowed) {
+    return (
+      <div className="max-w-md mx-auto my-12 bg-white rounded-lg border border-[#E2E8F0] p-6 text-center shadow-sm">
+        <h2 className="text-base font-semibold text-[#1F2937] mb-1">Access Restricted</h2>
+        <p className="text-xs text-[#64748B]">
+          You do not have permission to view or modify laboratory settings.
+        </p>
+      </div>
+    );
+  }
+
   // Preview text, built from what is typed right now
   const phones = [live.phone_primary, live.phone_secondary].filter(Boolean).join(' / ');
   const contactLine = [live.address, phones && `Tel ${phones}`, live.email]
@@ -218,15 +238,17 @@ export const HospitalSettingsView: React.FC<HospitalSettingsViewProps> = ({
         >
           Laboratory
         </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'users'}
-          onClick={() => switchTab('users')}
-          className={tabCls(activeTab === 'users')}
-        >
-          Users and access
-        </button>
+        {effectiveUser.role === 'admin' && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'users'}
+            onClick={() => switchTab('users')}
+            className={tabCls(activeTab === 'users')}
+          >
+            Users and access
+          </button>
+        )}
       </div>
 
       {activeTab === 'facility' && (

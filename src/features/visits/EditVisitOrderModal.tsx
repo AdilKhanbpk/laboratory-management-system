@@ -5,7 +5,7 @@ import {
   Doctor,
   UpdateVisitOrderAndInvoiceInput,
 } from '../../types';
-import { formatCurrency, parseCurrencyToPaisa } from '../../lib/utils';
+import { formatCurrency, parseCurrencyToPaisa, calculateAge } from '../../lib/utils';
 import { Button } from '../../components/common/Button';
 import { Alert } from '../../components/common/Alert';
 import {
@@ -20,6 +20,7 @@ import {
   Receipt,
   Coins,
   CheckCircle2,
+  User,
 } from 'lucide-react';
 
 interface EditVisitOrderModalProps {
@@ -31,7 +32,8 @@ interface EditVisitOrderModalProps {
 
 const inputClass =
   'block w-full h-9 px-3 rounded-md border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] ' +
-  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]';
+  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E] ' +
+  '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:hidden [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:hidden';
 
 export const EditVisitOrderModal: React.FC<EditVisitOrderModalProps> = ({
   visitId,
@@ -48,7 +50,14 @@ export const EditVisitOrderModal: React.FC<EditVisitOrderModalProps> = ({
   const [availableTests, setAvailableTests] = useState<LabTest[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
 
-  // Form State
+  // Form State - Patient Details
+  const [patientName, setPatientName] = useState<string>('');
+  const [patientAge, setPatientAge] = useState<string>('');
+  const [patientAgeMonths, setPatientAgeMonths] = useState<string>('');
+  const [patientGender, setPatientGender] = useState<'male' | 'female' | 'other'>('male');
+  const [patientPhone, setPatientPhone] = useState<string>('');
+
+  // Form State - Visit & Doctor
   const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null);
   const [visitNotes, setVisitNotes] = useState<string>('');
   const [selectedTests, setSelectedTests] = useState<LabTest[]>([]);
@@ -85,6 +94,24 @@ export const EditVisitOrderModal: React.FC<EditVisitOrderModalProps> = ({
 
         const v = visitRes.data;
         setVisitDetail(v);
+        setPatientName(v.patient.full_name || '');
+        setPatientGender((v.patient.gender as any) || 'male');
+        setPatientPhone(v.patient.phone_number || '');
+
+        if (v.patient.date_of_birth) {
+          const ageInfo = calculateAge(v.patient.date_of_birth);
+          if (ageInfo) {
+            setPatientAge(String(ageInfo.years));
+            setPatientAgeMonths(String(ageInfo.months));
+          } else {
+            setPatientAge('');
+            setPatientAgeMonths('');
+          }
+        } else {
+          setPatientAge('');
+          setPatientAgeMonths('');
+        }
+
         setSelectedDoctorId(v.visit.referring_doctor_id || null);
         setVisitNotes(v.visit.notes || '');
 
@@ -188,6 +215,10 @@ export const EditVisitOrderModal: React.FC<EditVisitOrderModalProps> = ({
 
   const handleSave = async () => {
     if (!visitId) return;
+    if (!patientName.trim()) {
+      setErrorMessage('Patient full name is required.');
+      return;
+    }
     if (selectedTests.length === 0) {
       setErrorMessage('Please select at least one laboratory test.');
       return;
@@ -200,12 +231,30 @@ export const EditVisitOrderModal: React.FC<EditVisitOrderModalProps> = ({
       return;
     }
 
+    const yearsNum = parseInt(patientAge.trim(), 10);
+    const monthsNum = parseInt(patientAgeMonths.trim(), 10);
+    const hasYears = !isNaN(yearsNum) && yearsNum >= 0 && yearsNum <= 130;
+    const hasMonths = !isNaN(monthsNum) && monthsNum >= 0 && monthsNum <= 11;
+    let calculatedDob: string | null = null;
+    if (hasYears || hasMonths) {
+      const y = hasYears ? yearsNum : 0;
+      const m = hasMonths ? monthsNum : 0;
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - y);
+      d.setMonth(d.getMonth() - m);
+      calculatedDob = d.toISOString().split('T')[0];
+    }
+
     setIsSaving(true);
     setErrorMessage(null);
     setSuccessMessage(null);
 
     const payload: UpdateVisitOrderAndInvoiceInput = {
       visitId,
+      patientName: patientName.trim(),
+      patientDob: calculatedDob,
+      patientGender,
+      patientPhone: patientPhone.trim() || null,
       referringDoctorId: selectedDoctorId || null,
       notes: visitNotes.trim() || null,
       testIds: selectedTests.map((t) => t.id),
@@ -292,8 +341,109 @@ export const EditVisitOrderModal: React.FC<EditVisitOrderModalProps> = ({
             </div>
           ) : (
             <>
+              {/* Patient Details Section */}
+              <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-[#E2E8F0]">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-[#0F766E]" />
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                      Patient Information
+                    </span>
+                  </div>
+                  {visitDetail?.patient.patient_mrn && (
+                    <span className="text-[11px] font-mono bg-white px-2 py-0.5 rounded border border-[#CBD5E1] text-slate-600">
+                      MRN: {visitDetail.patient.patient_mrn}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* Patient Name */}
+                  <div className="md:col-span-2">
+                    <label htmlFor="edit-patient-name" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Patient Full Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="edit-patient-name"
+                      type="text"
+                      required
+                      placeholder="e.g. Muhammad Ali"
+                      value={patientName}
+                      onChange={(e) => setPatientName(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+
+                  {/* Gender */}
+                  <div>
+                    <label htmlFor="edit-patient-gender" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Gender
+                    </label>
+                    <select
+                      id="edit-patient-gender"
+                      value={patientGender}
+                      onChange={(e) => setPatientGender(e.target.value as any)}
+                      className={inputClass}
+                    >
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+
+                  {/* Phone */}
+                  <div>
+                    <label htmlFor="edit-patient-phone" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Phone Number
+                    </label>
+                    <input
+                      id="edit-patient-phone"
+                      type="text"
+                      placeholder="e.g. 0300-1234567"
+                      value={patientPhone}
+                      onChange={(e) => setPatientPhone(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                {/* Age (Years & Months) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label htmlFor="edit-patient-age" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Age (Years)
+                    </label>
+                    <input
+                      id="edit-patient-age"
+                      type="number"
+                      min="0"
+                      max="130"
+                      placeholder="Years (e.g. 28)"
+                      value={patientAge}
+                      onChange={(e) => setPatientAge(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="edit-patient-age-months" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Age (Months)
+                    </label>
+                    <input
+                      id="edit-patient-age-months"
+                      type="number"
+                      min="0"
+                      max="11"
+                      placeholder="Months (0 - 11)"
+                      value={patientAgeMonths}
+                      onChange={(e) => setPatientAgeMonths(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Doctor and Notes Row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid mt-2 grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="edit-doc" className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
                     <Stethoscope className="w-3.5 h-3.5 text-slate-500" />
@@ -330,7 +480,7 @@ export const EditVisitOrderModal: React.FC<EditVisitOrderModalProps> = ({
               </div>
 
               {/* Tests Selection Section */}
-              <div className="border border-[#E2E8F0] rounded-lg p-4 space-y-3 bg-[#F8FAFC]/50">
+              <div className="border border-[#E2E8F0] rounded-lg mt-2 p-4 space-y-3 bg-[#F8FAFC]/50">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
                     Ordered Tests ({selectedTests.length})

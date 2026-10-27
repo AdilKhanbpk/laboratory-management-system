@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, AlertCircle, Loader2 } from 'lucide-react';
+import { Lock, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import type { SafeUser } from '../../types';
 
 /*
@@ -20,6 +20,7 @@ const inputClass =
 
 export const LockScreen: React.FC<LockScreenProps> = ({ user, onUnlock, onLogout }) => {
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUnlocking, setIsUnlocking] = useState(false);
 
@@ -109,15 +110,27 @@ export const LockScreen: React.FC<LockScreenProps> = ({ user, onUnlock, onLogout
             <label htmlFor="unlock-password" className="block text-[13px] font-medium mb-1.5">
               Password
             </label>
-            <input
-              id="unlock-password"
-              type="password"
-              autoFocus
-              autoComplete="current-password"
-              className={inputClass}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="relative">
+              <input
+                id="unlock-password"
+                type={showPassword ? 'text' : 'password'}
+                autoFocus
+                autoComplete="current-password"
+                className={`${inputClass} pr-10`}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#1F2937] p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <div className="flex gap-3 pt-1">

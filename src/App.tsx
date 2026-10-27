@@ -15,9 +15,12 @@ import { AuditView } from './features/audit/AuditView';
 import { AccessionWorklistView } from './features/results/AccessionWorklistView';
 import { DoctorStatisticsView } from './features/reports/DoctorStatisticsView';
 import { ReportTemplateDesignerView } from './features/reports/ReportTemplateDesignerView';
+import { AssetsPurchasesView } from './features/assets/AssetsPurchasesView';
+import { MyPercentageView } from './features/finance/MyPercentageView';
 import { BackupRestoreView } from './features/backup/BackupRestoreView';
 import { DeveloperPortalView } from './features/developer/DeveloperPortalView';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
+import { canUserAccessTab } from './lib/permissions';
 import type { SessionInfo, SafeUser, HospitalSettings } from './types';
 
 type AppState = 'loading' | 'setup' | 'login' | 'authenticated';
@@ -56,6 +59,9 @@ export const App: React.FC = () => {
       if (sessionRes.success && sessionRes.data) {
         setUser(sessionRes.data.user);
         setHospital(sessionRes.data.hospital);
+        if (!canUserAccessTab(activeTab, sessionRes.data.user)) {
+          setActiveTab('dashboard');
+        }
         setAppState('authenticated');
       } else {
         // Also prefetch hospital profile for login screen branding
@@ -120,6 +126,9 @@ export const App: React.FC = () => {
   const handleLoginSuccess = (session: SessionInfo) => {
     setUser(session.user);
     setHospital(session.hospital);
+    if (!canUserAccessTab(activeTab, session.user)) {
+      setActiveTab('dashboard');
+    }
     setAppState('authenticated');
     setIsLocked(false);
   };
@@ -132,8 +141,16 @@ export const App: React.FC = () => {
     }
     setUser(null);
     setIsLocked(false);
+    setActiveTab('dashboard');
     setAppState('login');
   };
+
+  // Re-verify permission whenever user or activeTab changes
+  useEffect(() => {
+    if (user && !canUserAccessTab(activeTab, user)) {
+      setActiveTab('dashboard');
+    }
+  }, [user, activeTab]);
 
   // 1. Loading & Startup Error States
   if (startupError) {
@@ -213,52 +230,81 @@ export const App: React.FC = () => {
           <Sidebar activeTab={activeTab} onSelectTab={setActiveTab} user={user} />
 
           <main className="flex-1 overflow-y-auto p-6 bg-slate-100 print:p-0 print:m-0 print:bg-white print:overflow-visible print:block">
-            {activeTab === 'dashboard' && hospital && user && (
-              <DashboardView
-                hospital={hospital}
-                user={user}
-                onNavigate={setActiveTab}
-              />
-            )}
+            {!canUserAccessTab(activeTab, user) ? (
+              <div className="flex items-center justify-center min-h-[50vh]">
+                <div className="max-w-md w-full bg-white rounded-xl border border-slate-200 p-8 text-center shadow-sm">
+                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4 border border-amber-200">
+                    <ShieldAlert className="w-6 h-6" />
+                  </div>
+                  <h2 className="text-base font-bold text-slate-900 mb-1">Access Restricted</h2>
+                  <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                    Your account role does not have permission to view this section.
+                    Please select an authorized module or return to the overview dashboard.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('dashboard')}
+                    className="inline-flex items-center justify-center px-4 py-2 bg-[#0F766E] hover:bg-[#115E59] text-white rounded-lg text-xs font-semibold transition-colors"
+                  >
+                    Return to Overview
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {activeTab === 'dashboard' && hospital && user && (
+                  <DashboardView
+                    hospital={hospital}
+                    user={user}
+                    onNavigate={setActiveTab}
+                  />
+                )}
 
-            {activeTab === 'doctors' && <DoctorListView />}
+                {activeTab === 'doctors' && <DoctorListView />}
 
-            {activeTab === 'tests' && <TestCatalogView />}
+                {activeTab === 'tests' && <TestCatalogView />}
 
-            {activeTab === 'new-visit' && (
-              <NewVisitView
-                hospitalSettings={hospital}
-                onVisitCreated={() => setActiveTab('billing')}
-              />
-            )}
+                {activeTab === 'assets' && <AssetsPurchasesView hospitalSettings={hospital} />}
 
-            {activeTab === 'billing' && (
-              <VisitListView
-                hospitalSettings={hospital}
-                onNavigateNewVisit={() => setActiveTab('new-visit')}
-              />
-            )}
+                {activeTab === 'new-visit' && (
+                  <NewVisitView
+                    hospitalSettings={hospital}
+                    onVisitCreated={() => setActiveTab('billing')}
+                  />
+                )}
 
-            {activeTab === 'results' && <AccessionWorklistView />}
+                {activeTab === 'billing' && (
+                  <VisitListView
+                    hospitalSettings={hospital}
+                    currentUser={user}
+                    onNavigateNewVisit={() => setActiveTab('new-visit')}
+                  />
+                )}
 
-            {activeTab === 'reports' && <DoctorStatisticsView />}
+                {activeTab === 'results' && <AccessionWorklistView />}
 
-            {activeTab === 'report-designer' && <ReportTemplateDesignerView />}
+                {activeTab === 'reports' && <DoctorStatisticsView />}
 
-            {activeTab === 'backup' && <BackupRestoreView />}
+                {activeTab === 'report-designer' && <ReportTemplateDesignerView />}
 
-            {activeTab === 'audit' && <AuditView />}
+                {activeTab === 'my-percentage' && <MyPercentageView />}
 
-            {activeTab === 'settings' && hospital && (
-              <HospitalSettingsView
-                hospital={hospital}
-                currentUser={user || undefined}
-                onUpdate={(updated) => setHospital(updated)}
-              />
-            )}
+                {activeTab === 'backup' && <BackupRestoreView />}
 
-            {activeTab === 'developer' && (
-              <DeveloperPortalView onNavigate={(tab) => setActiveTab(tab)} />
+                {activeTab === 'audit' && <AuditView />}
+
+                {activeTab === 'settings' && hospital && (
+                  <HospitalSettingsView
+                    hospital={hospital}
+                    currentUser={user || undefined}
+                    onUpdate={(updated) => setHospital(updated)}
+                  />
+                )}
+
+                {activeTab === 'developer' && (
+                  <DeveloperPortalView onNavigate={(tab) => setActiveTab(tab)} />
+                )}
+              </>
             )}
           </main>
         </div>

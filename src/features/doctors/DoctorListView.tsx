@@ -165,6 +165,7 @@ export const DoctorListView: React.FC = () => {
                   <th scope="col" className={th}>Doctor</th>
                   <th scope="col" className={th}>Specialization</th>
                   <th scope="col" className={th}>Phone</th>
+                  <th scope="col" className={`${th} text-right`}>Percentage</th>
                   <th scope="col" className={th}>Status</th>
                   <th scope="col" className={`${th} text-right`}>Actions</th>
                 </tr>
@@ -179,6 +180,9 @@ export const DoctorListView: React.FC = () => {
                         {d.specialization || <span className="text-[#64748B]">General</span>}
                       </td>
                       <td className={`${td} tabular-nums text-[#64748B]`}>{d.phone_number || '–'}</td>
+                      <td className={`${td} text-right tabular-nums font-semibold text-[#0F766E]`}>
+                        {d.commission_percentage !== undefined ? `${d.commission_percentage}%` : '0%'}
+                      </td>
                       <td className={td}>
                         <span className="inline-flex items-center gap-2">
                           <span

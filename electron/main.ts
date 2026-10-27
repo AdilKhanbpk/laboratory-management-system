@@ -15,6 +15,8 @@ import { DoctorStatsRepository } from './database/repositories/doctor-stats-repo
 import { ResultRepository } from './database/repositories/result-repository';
 import { PatientHistoryRepository } from './database/repositories/patient-history-repository';
 import { TemplateRepository } from './database/repositories/template-repository';
+import { AssetRepository } from './database/repositories/asset-repository';
+import { FinanceRepository } from './database/repositories/finance-repository';
 import { LogoService } from './security/logo-service';
 import { wipeDatabaseAndSeedStandardCatalog } from './database/standard-catalog-seeder';
 import { BackupService } from './services/backup-service';
@@ -62,6 +64,8 @@ function initializeDatabase(): {
   resultRepo: ResultRepository;
   patientHistoryRepo: PatientHistoryRepository;
   templateRepo: TemplateRepository;
+  assetRepo: AssetRepository;
+  financeRepo: FinanceRepository;
   logoService: LogoService;
   backupService: BackupService;
   restoreService: RestoreService;
@@ -106,6 +110,19 @@ function initializeDatabase(): {
     }
   }
 
+  // Clear existing technician payouts as requested
+  const clearTechnicianPayoutsMarker = path.join(userDataPath, '.clear_technician_payouts_v1_marker');
+  if (!fs.existsSync(clearTechnicianPayoutsMarker)) {
+    try {
+      const rawDb = manager.getDatabase();
+      rawDb.prepare("DELETE FROM partner_transactions WHERE partner = 'technician'").run();
+      rawDb.prepare("DELETE FROM owner_payouts").run();
+      fs.writeFileSync(clearTechnicianPayoutsMarker, 'cleared');
+    } catch (err) {
+      console.error('[LMS] Clear technician payouts initialization error:', err);
+    }
+  }
+
   const userRepo = new UserRepository(manager);
   const hospitalRepo = new HospitalRepository(manager);
   const auditRepo = new AuditRepository(manager);
@@ -117,6 +134,8 @@ function initializeDatabase(): {
   const resultRepo = new ResultRepository(manager);
   const patientHistoryRepo = new PatientHistoryRepository(manager);
   const templateRepo = new TemplateRepository(manager);
+  const assetRepo = new AssetRepository(manager);
+  const financeRepo = new FinanceRepository(manager);
   const logoService = new LogoService(userDataPath);
 
   const backupsDir = path.join(userDataPath, 'backups');
@@ -137,6 +156,8 @@ function initializeDatabase(): {
     resultRepo,
     patientHistoryRepo,
     templateRepo,
+    assetRepo,
+    financeRepo,
     logoService,
     backupService,
     restoreService,

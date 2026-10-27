@@ -19,7 +19,8 @@ interface DoctorFormModalProps {
 
 const inputClass =
   'block w-full h-9 px-3 rounded-md border border-[#CBD5E1] bg-white text-[13px] text-[#1F2937] ' +
-  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]';
+  'placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E] ' +
+  '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:hidden [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:hidden';
 
 const primaryBtn =
   'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-md bg-[#0F766E] text-[13px] font-medium text-white ' +
@@ -77,6 +78,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
       clinicHospitalName: '',
       address: '',
       notes: '',
+      commissionPercentage: 0,
     },
   });
 
@@ -92,6 +94,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
           clinicHospitalName: doctorToEdit.clinic_hospital_name || '',
           address: doctorToEdit.address || '',
           notes: doctorToEdit.notes || '',
+          commissionPercentage: doctorToEdit.commission_percentage ?? 0,
         });
       } else {
         reset({
@@ -101,6 +104,7 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
           clinicHospitalName: '',
           address: '',
           notes: '',
+          commissionPercentage: 0,
         });
       }
       setDuplicateWarning(null);
@@ -265,6 +269,24 @@ export const DoctorFormModal: React.FC<DoctorFormModalProps> = ({
                   placeholder="+92-300-0000000"
                   className={inputClass}
                   {...register('phoneNumber')}
+                />
+              </Field>
+
+              <Field
+                id="commissionPercentage"
+                label="Referral Percentage (%)"
+                optional
+                error={errors.commissionPercentage?.message}
+              >
+                <input
+                  id="commissionPercentage"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  placeholder="e.g. 20 (Percentage for laboratory tests)"
+                  className={inputClass}
+                  {...register('commissionPercentage', { valueAsNumber: true })}
                 />
               </Field>
 

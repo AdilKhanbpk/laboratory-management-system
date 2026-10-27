@@ -47,6 +47,18 @@ import {
   PurgeOlderBackupsSchema,
   InspectBackupSchema,
   ExecuteRestoreSchema,
+  CreateAssetSchema,
+  UpdateAssetSchema,
+  RecordPayoutSchema,
+  RecordLabCollectionSchema,
+  RecordPartnershipExpenseSchema,
+  RecordPartnerPaymentSchema,
+  ReversePartnershipTransactionSchema,
+  ClosePartnershipMonthSchema,
+  RecordDoctorCommissionPaymentSchema,
+  RecordInvestorCapitalSchema,
+  UpdatePartnershipSplitSchema,
+  PartnershipDashboardData,
   IpcResponse,
   SessionInfo,
   AppInfo,
@@ -55,6 +67,10 @@ import {
   Payment,
   Invoice,
   DoctorReferralStats,
+  LabAsset,
+  AssetFilterQuery,
+  OwnerPayout,
+  MyPercentageSummary,
   TestResult,
   ReportSnapshot,
   WorklistOrderItem,
@@ -77,6 +93,8 @@ import { DoctorStatsRepository } from '../database/repositories/doctor-stats-rep
 import { ResultRepository } from '../database/repositories/result-repository';
 import { PatientHistoryRepository } from '../database/repositories/patient-history-repository';
 import { TemplateRepository } from '../database/repositories/template-repository';
+import { AssetRepository } from '../database/repositories/asset-repository';
+import { FinanceRepository } from '../database/repositories/finance-repository';
 import { PdfService } from '../services/pdf-service';
 import { BackupService } from '../services/backup-service';
 import { RestoreService } from '../services/restore-service';
@@ -106,6 +124,8 @@ export interface HandlerContext {
   patientHistoryRepo: PatientHistoryRepository;
   migrationRunner: MigrationRunner;
   templateRepo: TemplateRepository;
+  assetRepo: AssetRepository;
+  financeRepo: FinanceRepository;
   logoService: LogoService;
   backupService: BackupService;
   restoreService: RestoreService;
@@ -1833,6 +1853,484 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       return { success: true, data: updated };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to toggle user status.' };
+    }
+  });
+
+  // --- ASSETS & PURCHASES HANDLERS ---
+  ipcMain.handle(IPC_CHANNELS.ASSETS_LIST, async (_, query: any): Promise<IpcResponse<LabAsset[]>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const assets = ctx.assetRepo.listAssets(query || {});
+      return { success: true, data: assets };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to list assets and purchases.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSETS_GET_BY_ID, async (_, id: unknown): Promise<IpcResponse<LabAsset | null>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      if (typeof id !== 'number' || isNaN(id)) return { success: false, error: 'Invalid asset ID.' };
+      const asset = ctx.assetRepo.getAssetById(id);
+      return { success: true, data: asset };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to get asset details.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSETS_CREATE, async (_, rawInput: unknown): Promise<IpcResponse<LabAsset>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = CreateAssetSchema.safeParse(rawInput);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid asset data.' };
+      }
+      const created = ctx.assetRepo.createAsset(parsed.data, currentSession.user.id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'ASSET_PURCHASE_CREATED',
+        entityType: 'ASSET',
+        entityId: String(created.id),
+        details: { title: created.title, amount_paisa: created.amount_paisa, purchase_date: created.purchase_date },
+      });
+      return { success: true, data: created };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to record asset/purchase.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSETS_UPDATE, async (_, rawInput: unknown): Promise<IpcResponse<LabAsset>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = UpdateAssetSchema.safeParse(rawInput);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid asset update data.' };
+      }
+      const updated = ctx.assetRepo.updateAsset(parsed.data);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'ASSET_PURCHASE_UPDATED',
+        entityType: 'ASSET',
+        entityId: String(updated.id),
+        details: { title: updated.title, amount_paisa: updated.amount_paisa },
+      });
+      return { success: true, data: updated };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to update asset/purchase.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSETS_DELETE, async (_, id: unknown): Promise<IpcResponse<boolean>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      if (typeof id !== 'number' || isNaN(id)) return { success: false, error: 'Invalid asset ID.' };
+      const deleted = ctx.assetRepo.deleteAsset(id);
+      if (deleted) {
+        ctx.auditRepo.logAction({
+          userId: currentSession.user.id,
+          action: 'ASSET_PURCHASE_DELETED',
+          entityType: 'ASSET',
+          entityId: String(id),
+        });
+      }
+      return { success: true, data: deleted };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to delete asset/purchase.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSETS_GET_SUMMARY, async (_, query: any): Promise<IpcResponse<{ totalCount: number; totalAmountPaisa: number }>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const summary = ctx.assetRepo.getSummary(query || {});
+      return { success: true, data: summary };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to calculate assets summary.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ASSETS_EXPORT_PDF, async (_, query: any): Promise<IpcResponse<{ success: boolean; filePath?: string }>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const assets = ctx.assetRepo.listAssets(query || {});
+      const summary = ctx.assetRepo.getSummary(query || {});
+      const hospital = ctx.hospitalRepo.getSettings() || currentSession.hospital;
+      const dateText = query?.startDate && query?.endDate
+        ? `${query.startDate} to ${query.endDate}`
+        : query?.startDate
+        ? `From ${query.startDate}`
+        : query?.endDate
+        ? `Up to ${query.endDate}`
+        : 'All-time Lifetime';
+
+      const mainWindow = ctx.getMainWindow ? ctx.getMainWindow() : null;
+      const res = await PdfService.exportAssetsReportPdf(assets, hospital, dateText, summary, mainWindow);
+      return { success: res.success, data: { success: res.success, filePath: res.filePath }, error: res.error };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to export assets PDF report.' };
+    }
+  });
+
+  // --- OWNER PROFIT & MY PERCENTAGE HANDLERS ---
+  ipcMain.handle(IPC_CHANNELS.FINANCE_GET_MY_PERCENTAGE_SUMMARY, async (_, query: any): Promise<IpcResponse<MyPercentageSummary>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const summary = ctx.financeRepo.getMyPercentageSummary(query || {});
+      return { success: true, data: summary };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to calculate profit & percentage summary.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.FINANCE_RECORD_PAYOUT, async (_, rawInput: unknown): Promise<IpcResponse<OwnerPayout>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = RecordPayoutSchema.safeParse(rawInput);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid payout entry.' };
+      }
+      const recorded = ctx.financeRepo.recordPayout(parsed.data, currentSession.user.id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'OWNER_PAYOUT_RECORDED',
+        entityType: 'FINANCE',
+        entityId: String(recorded.id),
+        details: { amount_paisa: recorded.amount_paisa, payout_date: recorded.payout_date, notes: recorded.notes },
+      });
+      return { success: true, data: recorded };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to record payout/received amount.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.FINANCE_DELETE_PAYOUT, async (_, id: unknown): Promise<IpcResponse<boolean>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      if (typeof id !== 'number' || isNaN(id)) return { success: false, error: 'Invalid payout ID.' };
+      const deleted = ctx.financeRepo.deletePayout(id);
+      if (deleted) {
+        ctx.auditRepo.logAction({
+          userId: currentSession.user.id,
+          action: 'OWNER_PAYOUT_DELETED',
+          entityType: 'FINANCE',
+          entityId: String(id),
+        });
+      }
+      return { success: true, data: deleted };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to remove payout record.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.FINANCE_UPDATE_OWNER_PERCENTAGE, async (_, percentage: unknown): Promise<IpcResponse<number>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      if (typeof percentage !== 'number' || isNaN(percentage)) {
+        return { success: false, error: 'Invalid percentage value.' };
+      }
+      const updated = ctx.financeRepo.updateOwnerPercentage(percentage);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'OWNER_PERCENTAGE_UPDATED',
+        entityType: 'FINANCE',
+        entityId: '1',
+        details: { percentage: updated },
+      });
+      return { success: true, data: updated };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to update owner percentage.' };
+    }
+  });
+
+  // ==========================================
+  // Partnership & Settlement Handlers
+  // ==========================================
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_GET_DASHBOARD, async (_, query: unknown): Promise<IpcResponse<PartnershipDashboardData>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const q = (query && typeof query === 'object' ? query : {}) as { startDate?: string; endDate?: string };
+      const dashboard = ctx.financeRepo.getPartnershipDashboard(q);
+      return { success: true, data: dashboard };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to load partnership dashboard.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_RECORD_COLLECTION, async (_, input: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = RecordLabCollectionSchema.safeParse(input);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid collection input.' };
+      }
+      const recorded = ctx.financeRepo.recordLabCollection(parsed.data, currentSession.user.id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'PARTNERSHIP_COLLECTION_RECORDED',
+        entityType: 'FINANCE',
+        entityId: String(recorded.id),
+        details: { amount: recorded.amountPaisa, collectedBy: recorded.collectedBy, type: recorded.entry_type },
+      });
+      return { success: true, data: recorded };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to record collection.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_RECORD_EXPENSE, async (_, input: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = RecordPartnershipExpenseSchema.safeParse(input);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid expense input.' };
+      }
+      const recorded = ctx.financeRepo.recordPartnershipExpense(parsed.data, currentSession.user.id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'PARTNERSHIP_EXPENSE_RECORDED',
+        entityType: 'FINANCE',
+        entityId: String(recorded.id),
+        details: { amount: recorded.amountPaisa, category: recorded.category, paidBy: recorded.paidBy },
+      });
+      return { success: true, data: recorded };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to record expense.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_REVERSE_EXPENSE, async (_, input: unknown): Promise<IpcResponse<boolean>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = z.object({
+        expenseId: z.number().int().positive(),
+        reason: z.string().trim().min(3, 'Reversal reason must be at least 3 characters'),
+      }).safeParse(input);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid expense reversal request.' };
+      }
+      const ok = ctx.financeRepo.reversePartnershipExpense(parsed.data, currentSession.user.id);
+      if (ok) {
+        ctx.auditRepo.logAction({
+          userId: currentSession.user.id,
+          action: 'PARTNERSHIP_EXPENSE_REVERSED',
+          entityType: 'FINANCE',
+          entityId: String(parsed.data.expenseId),
+          details: { reason: parsed.data.reason },
+        });
+      }
+      return { success: true, data: ok };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to reverse expense.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_RECORD_PAYMENT, async (_, input: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = RecordPartnerPaymentSchema.safeParse(input);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid partner payment input.' };
+      }
+      const recorded = ctx.financeRepo.recordPartnerPayment(parsed.data, currentSession.user.id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'PARTNERSHIP_PAYMENT_RECORDED',
+        entityType: 'FINANCE',
+        entityId: String(recorded.id),
+        details: { amount: recorded.amountPaisa, partner: recorded.partner, type: recorded.type },
+      });
+      return { success: true, data: recorded };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to record partner payment.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_REVERSE_TRANSACTION, async (_, input: unknown): Promise<IpcResponse<boolean>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = ReversePartnershipTransactionSchema.safeParse(input);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid reversal request.' };
+      }
+      const ok = ctx.financeRepo.reversePartnershipTransaction(parsed.data, currentSession.user.id);
+      if (ok) {
+        ctx.auditRepo.logAction({
+          userId: currentSession.user.id,
+          action: 'PARTNERSHIP_TRANSACTION_REVERSED',
+          entityType: 'FINANCE',
+          entityId: String(parsed.data.transactionId),
+          details: { reason: parsed.data.reason },
+        });
+      }
+      return { success: true, data: ok };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to reverse transaction.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_CLOSE_MONTH, async (_, input: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = ClosePartnershipMonthSchema.safeParse(input);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid month.' };
+      }
+      const result = ctx.financeRepo.closePartnershipMonth(parsed.data, currentSession.user.id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'PARTNERSHIP_MONTH_CLOSED',
+        entityType: 'FINANCE',
+        entityId: parsed.data.month,
+      });
+      return { success: true, data: result };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to close month.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_RECORD_DOCTOR_COMMISSION_PAYMENT, async (_, input: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = RecordDoctorCommissionPaymentSchema.safeParse(input);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid commission payment input.' };
+      }
+      const recorded = ctx.financeRepo.recordDoctorCommissionPayment(parsed.data, currentSession.user.id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'DOCTOR_COMMISSION_PAYMENT_RECORDED',
+        entityType: 'DOCTOR',
+        entityId: String(parsed.data.doctorId),
+        details: { amount: parsed.data.amountPaisa },
+      });
+      return { success: true, data: recorded };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to record doctor commission payment.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_RECORD_INVESTOR_CAPITAL, async (_, input: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = RecordInvestorCapitalSchema.safeParse(input);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid capital transaction input.' };
+      }
+      const recorded = ctx.financeRepo.recordInvestorCapital(parsed.data, currentSession.user.id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'INVESTOR_CAPITAL_RECORDED',
+        entityType: 'FINANCE',
+        entityId: String(recorded.id),
+        details: { amount: parsed.data.amountPaisa, type: parsed.data.type },
+      });
+      return { success: true, data: recorded };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to record capital transaction.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_EXPORT_STATEMENT, async (_, query: unknown): Promise<IpcResponse<{ success: boolean; filePath?: string; cancelled?: boolean }>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const q = (query && typeof query === 'object' ? query : {}) as { startDate?: string; endDate?: string };
+      const dashboard = ctx.financeRepo.getPartnershipDashboard(q);
+      const hospital = ctx.hospitalRepo.getSettings() || currentSession.hospital;
+
+      let dateRangeText = 'Lifetime Total';
+      if (q.startDate && q.endDate) {
+        dateRangeText = `${q.startDate} to ${q.endDate}`;
+      } else if (q.startDate) {
+        dateRangeText = `From ${q.startDate}`;
+      } else if (q.endDate) {
+        dateRangeText = `Until ${q.endDate}`;
+      }
+
+      const mainWindow = ctx.getMainWindow ? ctx.getMainWindow() : null;
+      const res = await PdfService.exportPartnershipStatementPdf(dashboard, hospital, dateRangeText, mainWindow);
+      if (res.cancelled) {
+        return { success: true, data: { success: false, cancelled: true } };
+      }
+      return { success: res.success, data: res, error: res.error };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to export statement.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_UPDATE_SPLIT, async (_, input: unknown): Promise<IpcResponse<number>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = UpdatePartnershipSplitSchema.safeParse(input);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid split input.' };
+      }
+      const updated = ctx.financeRepo.updatePartnershipSplit(
+        parsed.data.technicianPercentage,
+        parsed.data.investorPercentage,
+        currentSession.user.id,
+        parsed.data.effectiveFrom,
+        parsed.data.reason
+      );
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'PARTNERSHIP_SPLIT_UPDATED',
+        entityType: 'FINANCE',
+        entityId: '1',
+        details: { technicianPercentage: updated, investorPercentage: parsed.data.investorPercentage },
+      });
+      return { success: true, data: updated };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to update partnership split.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_UPDATE_TRANSACTION, async (_, input: unknown): Promise<IpcResponse<boolean>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const raw = input as any;
+      if (!raw || !raw.id || !raw.paymentDate || !raw.amountPaisa) {
+        return { success: false, error: 'Valid transaction id, date, and amount are required.' };
+      }
+      const ok = ctx.financeRepo.updatePartnerTransaction(raw, currentSession.user.id);
+      if (ok) {
+        ctx.auditRepo.logAction({
+          userId: currentSession.user.id,
+          action: 'PARTNER_TRANSACTION_UPDATED',
+          entityType: 'FINANCE',
+          entityId: String(raw.id),
+          details: {
+            reason: raw.editReason || 'Modified transaction',
+            amountPaisa: raw.amountPaisa,
+            paymentDate: raw.paymentDate,
+          },
+        });
+      }
+      return { success: ok, data: ok };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to update transaction.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_DELETE_TRANSACTION, async (_, id: unknown): Promise<IpcResponse<boolean>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const txId = Number(id);
+      if (!txId) return { success: false, error: 'Invalid transaction ID.' };
+      const ok = ctx.financeRepo.deletePartnerTransaction(txId);
+      return { success: ok, data: ok };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to delete transaction.' };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PARTNERSHIP_CLEAR_PAYOUTS, async (): Promise<IpcResponse<{ deletedCount: number }>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const res = ctx.financeRepo.clearTechnicianPayouts();
+      return { success: true, data: res };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to clear technician payouts.' };
     }
   });
 

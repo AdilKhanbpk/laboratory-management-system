@@ -8,6 +8,7 @@ export interface Doctor {
   clinic_hospital_name: string | null;
   address: string | null;
   notes: string | null;
+  commission_percentage: number;
   is_active: number;
   created_at: string;
   updated_at: string;
@@ -50,14 +51,15 @@ export class DoctorRepository {
     clinicHospitalName?: string | null;
     address?: string | null;
     notes?: string | null;
+    commissionPercentage?: number;
   }): Doctor {
     const db = this.dbManager.getDatabase();
     const now = new Date().toISOString();
 
     const stmt = db.prepare(`
       INSERT INTO doctors (
-        full_name, specialization, phone_number, clinic_hospital_name, address, notes, is_active, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+        full_name, specialization, phone_number, clinic_hospital_name, address, notes, commission_percentage, is_active, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
     `);
 
     const result = stmt.run(
@@ -67,6 +69,7 @@ export class DoctorRepository {
       params.clinicHospitalName?.trim() || null,
       params.address?.trim() || null,
       params.notes?.trim() || null,
+      params.commissionPercentage !== undefined ? Number(params.commissionPercentage) : 0,
       now,
       now
     );
@@ -83,6 +86,7 @@ export class DoctorRepository {
       clinicHospitalName?: string | null;
       address?: string | null;
       notes?: string | null;
+      commissionPercentage?: number;
       isActive?: number;
     }
   ): Doctor {
@@ -102,6 +106,7 @@ export class DoctorRepository {
         clinic_hospital_name = ?,
         address = ?,
         notes = ?,
+        commission_percentage = COALESCE(?, commission_percentage),
         is_active = COALESCE(?, is_active),
         updated_at = ?
       WHERE id = ?
@@ -112,6 +117,7 @@ export class DoctorRepository {
       params.clinicHospitalName?.trim() || null,
       params.address?.trim() || null,
       params.notes?.trim() || null,
+      params.commissionPercentage !== undefined ? Number(params.commissionPercentage) : null,
       params.isActive !== undefined ? params.isActive : null,
       now,
       id
