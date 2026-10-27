@@ -49,6 +49,9 @@ import {
   ExecuteRestoreSchema,
   CreateAssetSchema,
   UpdateAssetSchema,
+  VerifyResetKeySchema,
+  ResetPasswordWithKeySchema,
+  DevResetPasswordSchema,
   RecordPayoutSchema,
   RecordLabCollectionSchema,
   RecordPartnershipExpenseSchema,
@@ -505,6 +508,122 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       return { success: true, data: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Database restoration from backup failed.' };
+    }
+  });
+
+  // Emergency Password Reset: Verify 102-digit key
+  ipcMain.handle(IPC_CHANNELS.AUTH_VERIFY_RESET_KEY, async (_, rawInput: unknown): Promise<IpcResponse<any>> => {
+    try {
+      const parsed = VerifyResetKeySchema.safeParse(rawInput);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Key must be exactly 102 characters.' };
+      }
+      const rawKey = parsed.data.key.trim();
+      if (rawKey.length !== 102) {
+        return { success: false, error: 'Authorization key must be exactly 102 characters long.' };
+      }
+      const baseKey = rawKey.slice(0, 100);
+      const suffix = rawKey.slice(100).toLowerCase();
+
+      if (suffix !== 'aa' && suffix !== 'uu') {
+        return {
+          success: false,
+          error: "Invalid authorization suffix. Key must end with 'aa' for Administrator or 'uu' for Staff/Operator.",
+        };
+      }
+
+      const keyCheck = validateDynamicHourlyKey(baseKey);
+      if (!keyCheck.valid) {
+        return {
+          success: false,
+          error: keyCheck.error || 'Invalid or expired emergency authorization key. Contact developer Muhammad Adil (03178261618) for the current key.',
+        };
+      }
+
+      const allUsers = ctx.userRepo.listUsers();
+      const isForAdmin = suffix === 'aa';
+      const eligibleUsers = allUsers.filter((u) => isForAdmin ? u.role === 'admin' : u.role !== 'admin');
+
+      if (eligibleUsers.length === 0) {
+        return {
+          success: false,
+          error: isForAdmin ? 'No administrator account found in system.' : 'No operator/staff accounts found in system.',
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          valid: true,
+          targetScope: isForAdmin ? 'admin' : 'operator',
+          scopeLabel: isForAdmin ? 'Administrator Account' : 'Staff / Operator Account',
+          users: eligibleUsers.map((u) => ({
+            id: u.id,
+            username: u.username,
+            fullName: u.full_name,
+            role: u.role,
+          })),
+        },
+      };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to verify authorization key.' };
+    }
+  });
+
+  // Emergency Password Reset: Execute reset with verified 102-digit key
+  ipcMain.handle(IPC_CHANNELS.AUTH_RESET_PASSWORD_WITH_KEY, async (_, rawInput: unknown): Promise<IpcResponse<boolean>> => {
+    try {
+      const parsed = ResetPasswordWithKeySchema.safeParse(rawInput);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid reset data.' };
+      }
+      const { key, userId, newPassword } = parsed.data;
+      const rawKey = key.trim();
+      if (rawKey.length !== 102) {
+        return { success: false, error: 'Authorization key must be exactly 102 characters long.' };
+      }
+      const baseKey = rawKey.slice(0, 100);
+      const suffix = rawKey.slice(100).toLowerCase();
+
+      if (suffix !== 'aa' && suffix !== 'uu') {
+        return { success: false, error: "Invalid key suffix. Must end with 'aa' or 'uu'." };
+      }
+
+      const keyCheck = validateDynamicHourlyKey(baseKey);
+      if (!keyCheck.valid) {
+        return { success: false, error: 'Emergency authorization key has expired. Please request the latest key from developer.' };
+      }
+
+      const targetUser = ctx.userRepo.findById(userId);
+      if (!targetUser) {
+        return { success: false, error: 'Selected user does not exist.' };
+      }
+
+      if (suffix === 'aa' && targetUser.role !== 'admin') {
+        return { success: false, error: 'This key is only authorized to reset Administrator accounts.' };
+      }
+      if (suffix === 'uu' && targetUser.role === 'admin') {
+        return { success: false, error: 'This key is only authorized to reset Staff/Operator accounts, not Administrator.' };
+      }
+
+      const { hash, salt } = hashPasswordSync(newPassword);
+      ctx.userRepo.updatePassword(userId, hash, salt);
+
+      ctx.auditRepo.logAction({
+        userId,
+        action: 'EMERGENCY_PASSWORD_RESET',
+        entityType: 'USER',
+        entityId: String(userId),
+        details: {
+          username: targetUser.username,
+          scope: suffix === 'aa' ? 'admin' : 'operator',
+          resetVia: '102_DIGIT_DEVELOPER_KEY',
+        },
+      });
+
+      return { success: true, data: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to reset password.' };
     }
   });
 
@@ -1356,12 +1475,45 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
         success: true,
         data: {
           key,
+          adminKey: `${key}aa`,
+          userKey: `${key}uu`,
           minutesRemaining,
           currentHourStr: `${hour12} ${ampm}`,
         },
       };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to generate dynamic authorization key.' };
+    }
+  });
+
+  // Developer: Direct Password Reset Console
+  ipcMain.handle(IPC_CHANNELS.DEV_RESET_USER_PASSWORD, async (_, rawInput: unknown): Promise<IpcResponse<boolean>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = DevResetPasswordSchema.safeParse(rawInput);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid password reset input.' };
+      }
+      const { userId, newPassword } = parsed.data;
+      const targetUser = ctx.userRepo.findById(userId);
+      if (!targetUser) {
+        return { success: false, error: 'User not found.' };
+      }
+
+      const { hash, salt } = hashPasswordSync(newPassword);
+      ctx.userRepo.updatePassword(userId, hash, salt);
+
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'DEVELOPER_PASSWORD_RESET',
+        entityType: 'USER',
+        entityId: String(userId),
+        details: { targetUsername: targetUser.username, resetBy: currentSession.user.username },
+      });
+
+      return { success: true, data: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to reset user password.' };
     }
   });
 
@@ -1906,13 +2058,13 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       if (!parsed.success) {
         return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid asset update data.' };
       }
-      const updated = ctx.assetRepo.updateAsset(parsed.data);
+      const updated = ctx.assetRepo.updateAsset(parsed.data, currentSession.user.id);
       ctx.auditRepo.logAction({
         userId: currentSession.user.id,
         action: 'ASSET_PURCHASE_UPDATED',
         entityType: 'ASSET',
         entityId: String(updated.id),
-        details: { title: updated.title, amount_paisa: updated.amount_paisa },
+        details: { title: updated.title, amount_paisa: updated.amount_paisa, reason: parsed.data.editReason },
       });
       return { success: true, data: updated };
     } catch (err: any) {
@@ -1920,23 +2072,12 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.ASSETS_DELETE, async (_, id: unknown): Promise<IpcResponse<boolean>> => {
-    try {
-      if (!currentSession) return { success: false, error: 'Unauthorized.' };
-      if (typeof id !== 'number' || isNaN(id)) return { success: false, error: 'Invalid asset ID.' };
-      const deleted = ctx.assetRepo.deleteAsset(id);
-      if (deleted) {
-        ctx.auditRepo.logAction({
-          userId: currentSession.user.id,
-          action: 'ASSET_PURCHASE_DELETED',
-          entityType: 'ASSET',
-          entityId: String(id),
-        });
-      }
-      return { success: true, data: deleted };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Failed to delete asset/purchase.' };
-    }
+  ipcMain.handle(IPC_CHANNELS.ASSETS_DELETE, async (_): Promise<IpcResponse<boolean>> => {
+    // Assets cannot be removed once submitted for financial and percentage audit integrity
+    return {
+      success: false,
+      error: 'Asset and purchase entries cannot be removed once recorded to maintain transparent ledger and audit integrity.',
+    };
   });
 
   ipcMain.handle(IPC_CHANNELS.ASSETS_GET_SUMMARY, async (_, query: any): Promise<IpcResponse<{ totalCount: number; totalAmountPaisa: number }>> => {

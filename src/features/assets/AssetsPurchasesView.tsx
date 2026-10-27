@@ -6,7 +6,6 @@ import {
   Plus,
   Search,
   Pencil,
-  Trash2,
   FileDown,
   Printer,
   DollarSign,
@@ -41,6 +40,7 @@ const td = 'px-4 py-3 text-[13px] align-middle whitespace-nowrap';
 
 export const AssetsPurchasesView: React.FC<AssetsPurchasesViewProps> = ({ hospitalSettings }) => {
   const [assets, setAssets] = useState<LabAsset[]>([]);
+  const [expandedAssetId, setExpandedAssetId] = useState<number | null>(null);
   const [summary, setSummary] = useState<{
     totalCount: number;
     totalAmountPaisa: number;
@@ -178,24 +178,6 @@ export const AssetsPurchasesView: React.FC<AssetsPurchasesViewProps> = ({ hospit
   const handleEdit = (asset: LabAsset) => {
     setAssetToEdit(asset);
     setIsFormOpen(true);
-  };
-
-  const handleDelete = async (asset: LabAsset) => {
-    const confirmDelete = window.confirm(
-      `Delete purchase record "${asset.title}" (${formatCurrency(asset.amount_paisa)})?\n\nThis action cannot be undone.`
-    );
-    if (!confirmDelete) return;
-
-    try {
-      const res = await window.electronAPI.assets.delete(asset.id);
-      if (res.success) {
-        fetchAssets();
-      } else {
-        alert(res.error || 'Failed to delete asset record.');
-      }
-    } catch {
-      alert('An error occurred while deleting the asset.');
-    }
   };
 
   const handleExportPdf = async () => {
@@ -541,10 +523,10 @@ export const AssetsPurchasesView: React.FC<AssetsPurchasesViewProps> = ({ hospit
                 </thead>
                 <tbody>
                   {assets.map((asset) => (
-                    <tr
-                      key={asset.id}
-                      className="border-b border-[#E2E8F0] last:border-b-0 hover:bg-[#F8FAFC]"
-                    >
+                    <React.Fragment key={asset.id}>
+                      <tr
+                        className="border-b border-[#E2E8F0] last:border-b-0 hover:bg-[#F8FAFC]"
+                      >
                       <td className={`${td} font-medium tabular-nums`}>{asset.purchase_date}</td>
                       <td className={`${td} font-semibold text-[#1F2937]`}>{asset.title}</td>
                       <td className={td}>
@@ -572,8 +554,40 @@ export const AssetsPurchasesView: React.FC<AssetsPurchasesViewProps> = ({ hospit
                       </td>
                       <td className={`${td} text-[#64748B]`}>{asset.vendor_name || '–'}</td>
                       <td className={`${td} tabular-nums text-[#64748B]`}>{asset.invoice_receipt_no || '–'}</td>
-                      <td className={`${td} text-[#64748B] max-w-[200px] truncate`} title={asset.notes || undefined}>
-                        {asset.notes || '–'}
+                      <td className={`${td} text-[#64748B]`}>
+                        {(() => {
+                          if (!asset.notes) return '–';
+                          const isEditHistory = (str: string) => /^\s*\[EDIT HISTORY/i.test(str);
+                          const parts = asset.notes.split(/(?=\[EDIT HISTORY)/i).map((p) => p.trim()).filter(Boolean);
+                          const editTrails: string[] = [];
+                          for (const p of parts) {
+                            if (isEditHistory(p) && !editTrails.includes(p)) {
+                              editTrails.push(p);
+                            }
+                          }
+                          const editCount = editTrails.length;
+                          const baseNotes = parts.filter((p) => !isEditHistory(p)).join(' ');
+
+                          return (
+                            <div className="flex items-center gap-1.5 max-w-[260px]">
+                              <span className="truncate" title={baseNotes || undefined}>{baseNotes || (editCount > 0 ? 'Edited entry' : '–')}</span>
+                              {editCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedAssetId(expandedAssetId === asset.id ? null : asset.id)}
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors shrink-0 ${
+                                    expandedAssetId === asset.id
+                                      ? 'bg-amber-600 text-white border-amber-700'
+                                      : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                  }`}
+                                  title="Click to view full modification history"
+                                >
+                                  📝 Audit ({editCount})
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className={`${td} text-right tabular-nums font-bold text-[#0F766E]`}>
                         {formatCurrency(asset.amount_paisa)}
@@ -588,17 +602,41 @@ export const AssetsPurchasesView: React.FC<AssetsPurchasesViewProps> = ({ hospit
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
-                          {/* <button
-                            type="button"
-                            onClick={() => handleDelete(asset)}
-                            title="Delete entry"
-                            className={`${iconBtn} hover:text-[#DC2626]`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button> */}
                         </div>
                       </td>
                     </tr>
+                    {expandedAssetId === asset.id && asset.notes && (
+                      <tr className="bg-amber-50/50 border-b border-amber-200">
+                        <td colSpan={9} className="px-6 py-3.5">
+                          <div className="space-y-2">
+                            <p className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                              <span>📝 Modification Audit Trail for:</span>
+                              <span className="font-semibold text-slate-800">{asset.title}</span>
+                            </p>
+                            {(() => {
+                              const isEditHistory = (str: string) => /^\s*\[EDIT HISTORY/i.test(str);
+                              const parts = asset.notes.split(/(?=\[EDIT HISTORY)/i).map((p) => p.trim()).filter(Boolean);
+                              const editTrails: string[] = [];
+                              for (const p of parts) {
+                                if (isEditHistory(p) && !editTrails.includes(p)) {
+                                  editTrails.push(p);
+                                }
+                              }
+
+                              return editTrails.map((trail, idx) => (
+                                <div
+                                  key={idx}
+                                  className="rounded-md bg-white border border-amber-200/90 p-2.5 text-xs text-amber-950 whitespace-pre-wrap font-sans leading-relaxed shadow-xs"
+                                >
+                                  {trail}
+                                </div>
+                              ));
+                            })()}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                   ))}
                 </tbody>
               </table>

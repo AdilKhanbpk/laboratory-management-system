@@ -44,6 +44,7 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pkrAmount, setPkrAmount] = useState<string>('');
+  const [editReason, setEditReason] = useState<string>('');
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -76,6 +77,10 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({
       if (assetToEdit) {
         const pkrVal = (assetToEdit.amount_paisa / 100).toString();
         setPkrAmount(pkrVal);
+        const rawNotes = assetToEdit.notes || '';
+        const histIdx = rawNotes.search(/\[EDIT HISTORY/i);
+        const cleanNotes = histIdx >= 0 ? rawNotes.slice(0, histIdx).trim() : rawNotes.trim();
+        setEditReason('');
         reset({
           title: assetToEdit.title,
           category: assetToEdit.category || 'General',
@@ -85,10 +90,11 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({
           purchaserName: assetToEdit.purchaser_name || '',
           invoiceReceiptNo: assetToEdit.invoice_receipt_no || '',
           vendorName: assetToEdit.vendor_name || '',
-          notes: assetToEdit.notes || '',
+          notes: cleanNotes,
         });
       } else {
         setPkrAmount('');
+        setEditReason('');
         reset({
           title: '',
           category: 'General',
@@ -130,9 +136,15 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({
 
     try {
       if (assetToEdit) {
+        if (!editReason.trim()) {
+          setServerError('Please enter a detail explaining why you are modifying this purchase/asset record.');
+          setIsSubmitting(false);
+          return;
+        }
         const res = await window.electronAPI.assets.update({
           ...data,
           id: assetToEdit.id,
+          editReason: editReason.trim(),
         });
         if (!res.success || !res.data) {
           setServerError(res.error || 'Failed to update asset entry.');
@@ -355,6 +367,27 @@ export const AssetFormModal: React.FC<AssetFormModalProps> = ({
                   {...register('invoiceReceiptNo')}
                 />
               </div>
+
+              {/* Reason for modification (When editing) */}
+              {assetToEdit && (
+                <div className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50/80 p-3.5 space-y-1.5">
+                  <label htmlFor="editReason" className="block text-xs font-bold text-amber-900">
+                    Reason for Modification <span className="text-[#DC2626]">*</span>
+                  </label>
+                  <input
+                    id="editReason"
+                    type="text"
+                    value={editReason}
+                    onChange={(e) => setEditReason(e.target.value)}
+                    placeholder="e.g. Corrected purchase receipt amount or vendor details"
+                    className="block w-full h-9 px-3 rounded-md border border-amber-300 bg-white text-[13px] text-[#1F2937] placeholder:text-slate-400 focus:outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-600"
+                    required
+                  />
+                  <p className="text-[11px] text-amber-800">
+                    Security Audit: Every change to this purchase is permanently logged and visible in financial history.
+                  </p>
+                </div>
+              )}
 
               {/* Notes */}
               <div className="sm:col-span-2">

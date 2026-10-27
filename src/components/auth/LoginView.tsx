@@ -134,6 +134,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { LoginSchema, LoginInput, SessionInfo } from '../../types';
 import { FlaskConical, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
+import { ForgotPasswordModal } from './ForgotPasswordModal';
 
 /*
  * Same tokens as SetupWizard and Sidebar:
@@ -160,10 +161,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, hospitalNa
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<LoginInput>({
     resolver: zodResolver(LoginSchema),
@@ -294,6 +297,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, hospitalNa
                 )}
               </div>
 
+              <div className="flex items-center justify-end -mt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-xs font-semibold text-[#0F766E] hover:text-[#115E59] hover:underline transition-colors"
+                >
+                  Forgot password?
+                </button>
+              </div>
+
               <button
                 type="submit"
                 disabled={isLoading}
@@ -303,6 +316,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, hospitalNa
                 {isLoading ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
+
+            <ForgotPasswordModal
+              isOpen={showForgotPassword}
+              onClose={() => setShowForgotPassword(false)}
+              onResetSuccess={(uname) => {
+                setValue('username', uname);
+              }}
+            />
 
             <p className="mt-8 text-xs text-[#64748B] leading-relaxed">
               All test configurations, financial records and patient data stay on this computer.

@@ -515,6 +515,7 @@ import {
   RestoreExecutionResult,
   AppInfo,
   DevCurrentDynamicKeyResult,
+  SafeUser,
 } from '../../types';
 import {
   RotateCcw,
@@ -528,6 +529,9 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Key,
+  Lock,
+  ShieldCheck,
 } from 'lucide-react';
 
 import { LegacyTestImporterCard } from './LegacyTestImporterCard';
@@ -622,8 +626,15 @@ export const DeveloperPortalView: React.FC<DeveloperPortalViewProps> = ({ onNavi
 
   // Dynamic key state
   const [dynamicKeyData, setDynamicKeyData] = useState<DevCurrentDynamicKeyResult | null>(null);
-  const [isCopied, setIsCopied] = useState(false);
+  const [copiedKeyName, setCopiedKeyName] = useState<string | null>(null);
   const [isLoadingKey, setIsLoadingKey] = useState(false);
+
+  // User password reset state
+  const [devUsers, setDevUsers] = useState<SafeUser[]>([]);
+  const [targetUserId, setTargetUserId] = useState<number | null>(null);
+  const [devNewPassword, setDevNewPassword] = useState('');
+  const [isResettingUser, setIsResettingUser] = useState(false);
+  const [devResetStatus, setDevResetStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Restore state
   const [restoreFilePath, setRestoreFilePath] = useState<string | null>(null);
@@ -659,6 +670,14 @@ export const DeveloperPortalView: React.FC<DeveloperPortalViewProps> = ({ onNavi
           setAppInfo(res.data);
         }
       });
+      window.electronAPI.users.list().then((res) => {
+        if (res.success && res.data) {
+          setDevUsers(res.data);
+          if (res.data.length > 0) {
+            setTargetUserId(res.data[0].id);
+          }
+        }
+      });
     }
   }, [isAuthenticated, fetchDynamicKey]);
 
@@ -677,11 +696,32 @@ export const DeveloperPortalView: React.FC<DeveloperPortalViewProps> = ({ onNavi
     }
   };
 
-  const handleCopyDynamicKey = () => {
-    if (dynamicKeyData?.key) {
-      navigator.clipboard.writeText(dynamicKeyData.key);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 3000);
+  const handleCopyKey = (keyText: string, label: string) => {
+    navigator.clipboard.writeText(keyText);
+    setCopiedKeyName(label);
+    setTimeout(() => setCopiedKeyName(null), 3000);
+  };
+
+  const handleDevResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetUserId || !devNewPassword) return;
+    setIsResettingUser(true);
+    setDevResetStatus(null);
+    try {
+      const res = await window.electronAPI.developer.resetUserPassword({
+        userId: targetUserId,
+        newPassword: devNewPassword,
+      });
+      if (res.success) {
+        setDevResetStatus({ type: 'success', text: 'Password reset successfully!' });
+        setDevNewPassword('');
+      } else {
+        setDevResetStatus({ type: 'error', text: res.error || 'Failed to reset password.' });
+      }
+    } catch (err: any) {
+      setDevResetStatus({ type: 'error', text: err?.message || 'Error occurred while resetting password.' });
+    } finally {
+      setIsResettingUser(false);
     }
   };
 
@@ -844,43 +884,180 @@ export const DeveloperPortalView: React.FC<DeveloperPortalViewProps> = ({ onNavi
         )}
       </div>
 
-      {/* Backup authorization key */}
+      {/* Developer Dynamic Keys & Password Reset Generator */}
       <Panel
-        title="Backup authorization key"
-        description="A 100-character key tied to the current hour. The operator needs it to create or restore a backup."
+        title="Dynamic Authorization & Emergency Password Keys"
+        description="Hourly-rotated cryptographic authorization keys. Provide these keys when operators or administrators contact you to restore backups or perform emergency password resets."
         aside={
           <button type="button" onClick={fetchDynamicKey} disabled={isLoadingKey} className={`${secondaryBtn} shrink-0`}>
             <RefreshCw className={`w-4 h-4 text-[#64748B] ${isLoadingKey ? 'animate-spin' : ''}`} />
-            Refresh
+            Refresh Keys
           </button>
         }
       >
-        <div className="p-5 space-y-4">
-          <div
-            className="px-4 py-3 rounded-md border border-[#E2E8F0] bg-[#F8FAFC] font-mono text-[13px] leading-6 text-[#1F2937] select-all break-all"
-            aria-label="Current authorization key"
-          >
-            {dynamicKeyData?.key || 'Generating key…'}
+        <div className="p-5 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-teal-50/70 border border-teal-200 rounded-lg text-xs text-teal-900">
+            <span className="font-semibold">
+              Developer: Muhammad Adil (03178261618 · adilkhanbpk@gmail.com)
+            </span>
+            <span className="font-mono text-teal-800">
+              {dynamicKeyData ? `Hour ${dynamicKeyData.currentHourStr} (${dynamicKeyData.minutesRemaining} mins left)` : 'Loading…'}
+            </span>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <p className="text-[13px] text-[#64748B] tabular-nums">
-              {dynamicKeyData ? (
-                <>
-                  Hour {dynamicKeyData.currentHourStr}, {dynamicKeyData.minutesRemaining} minutes left. The key
-                  expires at the start of the next hour.
-                </>
-              ) : (
-                ' '
-              )}
-            </p>
+          {/* Key 1: Administrator Password Reset (102 Digits - Suffix: aa) */}
+          <div className="space-y-2 p-4 rounded-lg border border-amber-200 bg-amber-50/50">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-700" />
+                  Administrator Emergency Reset Key (102 Digits)
+                </span>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  Give this key when the hospital administrator needs to reset their admin password (ends with <span className="font-mono font-bold">aa</span>).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCopyKey(`${dynamicKeyData?.key || ''}aa`, 'admin')}
+                disabled={!dynamicKeyData}
+                className="h-8 px-3 rounded-md bg-amber-700 hover:bg-amber-800 text-white text-xs font-semibold shrink-0 inline-flex items-center gap-1.5 transition-colors shadow-xs"
+              >
+                {copiedKeyName === 'admin' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedKeyName === 'admin' ? 'Copied Admin Key!' : 'Copy Admin Key (102 Chars)'}
+              </button>
+            </div>
+            <div className="p-2.5 rounded-md border border-amber-300 bg-white font-mono text-[11px] text-slate-900 break-all select-all leading-relaxed">
+              {dynamicKeyData?.key ? `${dynamicKeyData.key}aa` : 'Generating key…'}
+            </div>
+          </div>
 
-            <button type="button" onClick={handleCopyDynamicKey} disabled={!dynamicKeyData} className={primaryBtn}>
-              {isCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              {isCopied ? 'Copied' : 'Copy key'}
-            </button>
+          {/* Key 2: Staff / Operator Password Reset (102 Digits - Suffix: uu) */}
+          <div className="space-y-2 p-4 rounded-lg border border-teal-200 bg-teal-50/50">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
+                  <Key className="w-4 h-4 text-teal-700" />
+                  Staff / Operator Emergency Reset Key (102 Digits)
+                </span>
+                <p className="text-[11px] text-teal-800 mt-0.5">
+                  Give this key when operators or lab staff need to reset their password (ends with <span className="font-mono font-bold">uu</span>).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCopyKey(`${dynamicKeyData?.key || ''}uu`, 'user')}
+                disabled={!dynamicKeyData}
+                className="h-8 px-3 rounded-md bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold shrink-0 inline-flex items-center gap-1.5 transition-colors shadow-xs"
+              >
+                {copiedKeyName === 'user' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedKeyName === 'user' ? 'Copied Staff Key!' : 'Copy Staff Key (102 Chars)'}
+              </button>
+            </div>
+            <div className="p-2.5 rounded-md border border-teal-300 bg-white font-mono text-[11px] text-slate-900 break-all select-all leading-relaxed">
+              {dynamicKeyData?.key ? `${dynamicKeyData.key}uu` : 'Generating key…'}
+            </div>
+          </div>
+
+          {/* Key 3: Base Backup Key (100 Digits) */}
+          <div className="space-y-2 p-4 rounded-lg border border-slate-200 bg-slate-50/50">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-xs font-bold text-slate-900">
+                  Standard Backup / Restore Authorization Key (100 Digits)
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Used by operator to authorize disaster restorations and encrypted backup snapshots.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCopyKey(dynamicKeyData?.key || '', 'base')}
+                disabled={!dynamicKeyData}
+                className="h-8 px-3 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-medium shrink-0 inline-flex items-center gap-1.5 transition-colors"
+              >
+                {copiedKeyName === 'base' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedKeyName === 'base' ? 'Copied 100-Char Key!' : 'Copy 100-Char Key'}
+              </button>
+            </div>
+            <div className="p-2.5 rounded-md border border-slate-200 bg-white font-mono text-[11px] text-slate-700 break-all select-all leading-relaxed">
+              {dynamicKeyData?.key || 'Generating key…'}
+            </div>
           </div>
         </div>
+      </Panel>
+
+      {/* Direct Developer Password Reset Tool */}
+      <Panel
+        title="Direct Password Reset Console"
+        description="As developer Muhammad Adil, you can directly reset any account password without needing keys."
+      >
+        <form onSubmit={handleDevResetPassword} className="p-5 space-y-4">
+          {devResetStatus && (
+            <div
+              className={`p-3 rounded-lg border text-xs flex items-center gap-2 ${
+                devResetStatus.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-red-50 border-red-200 text-red-900'
+              }`}
+            >
+              {devResetStatus.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              )}
+              <span>{devResetStatus.text}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="devTargetUser" className="block text-xs font-bold text-slate-800 mb-1.5">
+                Target User Account
+              </label>
+              <select
+                id="devTargetUser"
+                value={targetUserId || ''}
+                onChange={(e) => setTargetUserId(Number(e.target.value))}
+                className="block w-full h-9 px-3 rounded-md border border-[#CBD5E1] bg-white text-xs text-[#1F2937]"
+                required
+              >
+                {devUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name} ({u.username}) – {u.role.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="devNewPassword" className="block text-xs font-bold text-slate-800 mb-1.5">
+                New Password
+              </label>
+              <input
+                id="devNewPassword"
+                type="text"
+                value={devNewPassword}
+                onChange={(e) => setDevNewPassword(e.target.value)}
+                placeholder="Enter new password"
+                className="block w-full h-9 px-3 rounded-md border border-[#CBD5E1] bg-white text-xs text-[#1F2937]"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              disabled={isResettingUser || !devNewPassword || !targetUserId}
+              className="h-9 px-4 rounded-md bg-[#0F766E] hover:bg-[#115E59] text-white text-xs font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
+            >
+              {isResettingUser && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              <Lock className="w-3.5 h-3.5" />
+              Reset Account Password
+            </button>
+          </div>
+        </form>
       </Panel>
 
       {/* Legacy test catalog importer (still in its previous style) */}

@@ -28,6 +28,8 @@ const CHANNELS = {
   AUTH_GET_RECOVERY_KEY: 'auth:get-recovery-key',
   AUTH_RESTORE_KEY: 'auth:restore-key',
   AUTH_RESTORE_FROM_BACKUP: 'auth:restore-from-backup',
+  AUTH_VERIFY_RESET_KEY: 'auth:verify-reset-key',
+  AUTH_RESET_PASSWORD_WITH_KEY: 'auth:reset-password-with-key',
 
   // Users
   USERS_LIST: 'users:list',
@@ -114,6 +116,7 @@ const CHANNELS = {
   DEV_SELECT_TEMPLATE_FILE: 'dev:select-template-file',
   DEV_CLEAR_ALL_TESTS: 'dev:clear-all-tests',
   DEV_WIPE_ALL_DATA: 'dev:wipe-all-data',
+  DEV_RESET_USER_PASSWORD: 'dev:reset-user-password',
 
   // Audit
   AUDIT_GET_RECENT: 'audit:get-recent',
@@ -176,6 +179,9 @@ const api: ElectronAPI = {
     getRecoveryKey: () => ipcRenderer.invoke(CHANNELS.AUTH_GET_RECOVERY_KEY),
     restoreWithKey: (input: RestoreKeyInput) => ipcRenderer.invoke(CHANNELS.AUTH_RESTORE_KEY, input),
     restoreFromBackup: (input: RestoreFromBackupInput) => ipcRenderer.invoke(CHANNELS.AUTH_RESTORE_FROM_BACKUP, input),
+    verifyResetKey: (input: { key: string }) => ipcRenderer.invoke(CHANNELS.AUTH_VERIFY_RESET_KEY, input),
+    resetPasswordWithKey: (input: { key: string; userId: number; newPassword: string }) =>
+      ipcRenderer.invoke(CHANNELS.AUTH_RESET_PASSWORD_WITH_KEY, input),
   },
   users: {
     list: () => ipcRenderer.invoke(CHANNELS.USERS_LIST),
@@ -260,6 +266,8 @@ const api: ElectronAPI = {
     selectTemplateFile: () => ipcRenderer.invoke(CHANNELS.DEV_SELECT_TEMPLATE_FILE),
     clearAllTests: () => ipcRenderer.invoke(CHANNELS.DEV_CLEAR_ALL_TESTS),
     wipeAllData: () => ipcRenderer.invoke(CHANNELS.DEV_WIPE_ALL_DATA),
+    resetUserPassword: (input: { userId: number; newPassword: string }) =>
+      ipcRenderer.invoke(CHANNELS.DEV_RESET_USER_PASSWORD, input),
   },
   restore: {
     selectFile: () => ipcRenderer.invoke(CHANNELS.RESTORE_SELECT_FILE),

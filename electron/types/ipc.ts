@@ -757,8 +757,35 @@ export type CreateAssetInput = z.infer<typeof CreateAssetSchema>;
 
 export const UpdateAssetSchema = CreateAssetSchema.partial().extend({
   id: z.number().int().positive(),
+  editReason: z.string().trim().max(500).optional(),
 });
 export type UpdateAssetInput = z.infer<typeof UpdateAssetSchema>;
+
+// Password Reset via 102-digit Emergency Key
+export const VerifyResetKeySchema = z.object({
+  key: z.string().trim().length(102, 'Key must be exactly 102 characters'),
+});
+export type VerifyResetKeyInput = z.infer<typeof VerifyResetKeySchema>;
+
+export const ResetPasswordWithKeySchema = z.object({
+  key: z.string().trim().length(102, 'Key must be exactly 102 characters'),
+  userId: z.number().int().positive('User selection is required'),
+  newPassword: z.string().min(4, 'Password must be at least 4 characters').max(128),
+});
+export type ResetPasswordWithKeyInput = z.infer<typeof ResetPasswordWithKeySchema>;
+
+export const DevResetPasswordSchema = z.object({
+  userId: z.number().int().positive('User selection is required'),
+  newPassword: z.string().min(4, 'Password must be at least 4 characters').max(128),
+});
+export type DevResetPasswordInput = z.infer<typeof DevResetPasswordSchema>;
+
+export interface VerifyResetKeyResult {
+  valid: boolean;
+  targetScope: 'admin' | 'operator';
+  scopeLabel: string;
+  users: Array<{ id: number; username: string; fullName: string; role: string }>;
+}
 
 // Owner Payout Schema
 export const RecordPayoutSchema = z.object({
@@ -987,6 +1014,8 @@ export interface ElectronAPI {
     getRecoveryKey: () => Promise<IpcResponse<string>>;
     restoreWithKey: (input: RestoreKeyInput) => Promise<IpcResponse<boolean>>;
     restoreFromBackup: (input: RestoreFromBackupInput) => Promise<IpcResponse<boolean>>;
+    verifyResetKey: (input: { key: string }) => Promise<IpcResponse<VerifyResetKeyResult>>;
+    resetPasswordWithKey: (input: { key: string; userId: number; newPassword: string }) => Promise<IpcResponse<boolean>>;
   };
   users: {
     list: () => Promise<IpcResponse<SafeUser[]>>;
@@ -1078,6 +1107,7 @@ export interface ElectronAPI {
     selectTemplateFile: () => Promise<IpcResponse<string | null>>;
     clearAllTests: () => Promise<IpcResponse<{ deletedTests: number; deletedParams: number }>>;
     wipeAllData: () => Promise<IpcResponse<{ deletedTests: number; deletedParams: number; deletedVisits: number }>>;
+    resetUserPassword: (input: { userId: number; newPassword: string }) => Promise<IpcResponse<boolean>>;
   };
   restore: {
     selectFile: () => Promise<IpcResponse<string | null>>;

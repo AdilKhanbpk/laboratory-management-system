@@ -622,8 +622,36 @@ export class FinanceRepository {
     const auditMessage = `[EDIT HISTORY ${editTimestamp} by ${editorName}]\n• Reason for change: "${reasonDetail}"\n• What changed: ${whatChangedText}\n• Before values: [${beforeSummary}]`;
 
     // Construct final notes message: preserve base notes and append edit message
-    const rawInputNotes = input.notes !== undefined ? (input.notes?.trim() || '') : (old.notes || '');
-    const finalNotes = rawInputNotes ? `${rawInputNotes}\n\n${auditMessage}` : auditMessage;
+    let cleanBaseNote = '';
+    if (input.notes !== undefined) {
+      const inputRaw = input.notes?.trim() || '';
+      const inputHistIdx = inputRaw.search(/\[EDIT HISTORY/i);
+      cleanBaseNote = inputHistIdx >= 0 ? inputRaw.slice(0, inputHistIdx).trim() : inputRaw;
+    } else if (old.notes) {
+      const existRaw = old.notes.trim();
+      const existHistIdx = existRaw.search(/\[EDIT HISTORY/i);
+      cleanBaseNote = existHistIdx >= 0 ? existRaw.slice(0, existHistIdx).trim() : existRaw;
+    }
+
+    const historyBlocks: string[] = [];
+    if (old.notes) {
+      const existHistIdx = old.notes.search(/\[EDIT HISTORY/i);
+      if (existHistIdx >= 0) {
+        const histRaw = old.notes.slice(existHistIdx);
+        const parts = histRaw.split(/(?=\[EDIT HISTORY)/i).map((p: string) => p.trim()).filter(Boolean);
+        for (const p of parts) {
+          if (!historyBlocks.includes(p)) {
+            historyBlocks.push(p);
+          }
+        }
+      }
+    }
+
+    historyBlocks.push(auditMessage);
+
+    const finalNotes = cleanBaseNote
+      ? `${cleanBaseNote}\n\n${historyBlocks.join('\n\n')}`
+      : historyBlocks.join('\n\n');
 
     db.prepare(`
       UPDATE partner_transactions

@@ -17,7 +17,6 @@ import {
   DollarSign,
   X,
   Pencil,
-  Trash2,
 } from 'lucide-react';
 
 type DatePreset = 'lifetime' | 'today' | 'last7' | 'this_month' | 'last_month' | 'custom';
@@ -365,7 +364,8 @@ export const MyPercentageView: React.FC = () => {
   const handleOpenEdit = (t: PartnershipDashboardData['transactions'][0]) => {
     // Strip previous audit trail messages from editable notes field so the user only edits base notes
     const rawNotes = t.notes || '';
-    const cleanNotes = rawNotes.split(/\[EDIT HISTORY/i)[0].trim();
+    const histIdx = rawNotes.search(/\[EDIT HISTORY/i);
+    const cleanNotes = histIdx >= 0 ? rawNotes.slice(0, histIdx).trim() : rawNotes.trim();
 
     setEditingTx({
       id: t.id,
@@ -423,32 +423,6 @@ export const MyPercentageView: React.FC = () => {
       'Payment record updated and modification details logged.'
     );
     setEditingTx(null);
-  };
-
-  const handleDeleteTx = async (id: number, amountPaisa: number) => {
-    if (busy) return;
-    if (!window.confirm(`Are you sure you want to delete this payment record of ${money(amountPaisa)}?`)) {
-      return;
-    }
-    const partnershipApi = window.electronAPI.partnership;
-    await invoke(
-      'deletePartnerTransaction',
-      () => partnershipApi.deleteTransaction(id),
-      'Payment record deleted successfully.'
-    );
-  };
-
-  const handleClearTechnicianPayouts = async () => {
-    if (busy) return;
-    if (!window.confirm('Are you sure you want to delete ALL technician payout records? This cannot be undone.')) {
-      return;
-    }
-    const partnershipApi = window.electronAPI.partnership;
-    await invoke(
-      'clearTechnicianPayouts',
-      () => partnershipApi.clearTechnicianPayouts(),
-      'All technician payout records deleted successfully.'
-    );
   };
 
   const closeMonth = async () => {
@@ -1080,7 +1054,43 @@ export const MyPercentageView: React.FC = () => {
                         {a.invoiceReceiptNo ? ` · Inv: ${a.invoiceReceiptNo}` : ''}
                         {a.recordedByName ? ` · By: ${a.recordedByName}` : ''}
                       </p>
-                      {a.notes && <p className="text-xs text-slate-600 mt-1">{a.notes}</p>}
+                      {a.notes && (
+                        <div className="mt-1.5 space-y-1 text-xs">
+                          {(() => {
+                            const isEditHistory = (str: string) => /^\s*\[EDIT HISTORY/i.test(str);
+                            let baseNote = '';
+                            const editTrails: string[] = [];
+
+                            const parts = a.notes.split(/(?=\[EDIT HISTORY)/i).map((p) => p.trim()).filter(Boolean);
+                            for (const p of parts) {
+                              if (isEditHistory(p)) {
+                                if (!editTrails.includes(p)) {
+                                  editTrails.push(p);
+                                }
+                              } else {
+                                baseNote = baseNote ? `${baseNote}\n${p}` : p;
+                              }
+                            }
+
+                            return (
+                              <>
+                                {baseNote && <p className="text-slate-600 break-words">{baseNote}</p>}
+                                {editTrails.map((trail, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="rounded-md bg-amber-50/90 border border-amber-200/90 p-2 text-[11px] text-amber-950 whitespace-pre-wrap font-sans leading-relaxed"
+                                  >
+                                    <div className="font-semibold text-amber-800 flex items-center gap-1.5 mb-0.5">
+                                      <span>📝 Modification Record:</span>
+                                    </div>
+                                    {trail}
+                                  </div>
+                                ))}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
                     <div className="text-right">
                       <strong className="text-sm font-bold text-amber-700 tabular-nums">{money(a.amountPaisa)}</strong>
@@ -1102,18 +1112,6 @@ export const MyPercentageView: React.FC = () => {
         subtitle={`Manage and edit recorded payouts and settlements (${periodLabel}).`}
         action={
           <div className="flex items-center gap-2">
-            {/* {activeTransactions.length > 0 && (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-red-200 bg-red-50 text-xs font-medium text-red-700 hover:bg-red-100 transition-colors"
-                onClick={handleClearTechnicianPayouts}
-                disabled={busy === 'clearTechnicianPayouts'}
-                title="Delete all technician payouts"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                Clear Technician Payouts
-              </button>
-            )} */}
             <button
               type="button"
               className={secondaryButton}
@@ -1146,9 +1144,20 @@ export const MyPercentageView: React.FC = () => {
                   {t.notes && (
                     <div className="mt-1.5 space-y-1 text-xs">
                       {(() => {
-                        const parts = t.notes.split(/(?=\[EDIT HISTORY)/i);
-                        const baseNote = parts[0]?.trim();
-                        const editTrails = parts.slice(1);
+                        const isEditHistory = (str: string) => /^\s*\[EDIT HISTORY/i.test(str);
+                        let baseNote = '';
+                        const editTrails: string[] = [];
+
+                        const parts = t.notes.split(/(?=\[EDIT HISTORY)/i).map((p) => p.trim()).filter(Boolean);
+                        for (const p of parts) {
+                          if (isEditHistory(p)) {
+                            if (!editTrails.includes(p)) {
+                              editTrails.push(p);
+                            }
+                          } else {
+                            baseNote = baseNote ? `${baseNote}\n${p}` : p;
+                          }
+                        }
 
                         return (
                           <>
@@ -1182,14 +1191,6 @@ export const MyPercentageView: React.FC = () => {
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    {/* <button
-                      type="button"
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors"
-                      onClick={() => handleDeleteTx(t.id, t.amountPaisa)}
-                      title="Delete payout entry"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button> */}
                   </div>
                 </div>
               </div>

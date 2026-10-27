@@ -9,6 +9,8 @@ export const IPC_CHANNELS = {
   AUTH_GET_RECOVERY_KEY: 'auth:get-recovery-key',
   AUTH_RESTORE_KEY: 'auth:restore-key',
   AUTH_RESTORE_FROM_BACKUP: 'auth:restore-from-backup',
+  AUTH_VERIFY_RESET_KEY: 'auth:verify-reset-key',
+  AUTH_RESET_PASSWORD_WITH_KEY: 'auth:reset-password-with-key',
 
   // Users Management & RBAC
   USERS_LIST: 'users:list',
@@ -95,6 +97,7 @@ export const IPC_CHANNELS = {
   DEV_SELECT_TEMPLATE_FILE: 'dev:select-template-file',
   DEV_CLEAR_ALL_TESTS: 'dev:clear-all-tests',
   DEV_WIPE_ALL_DATA: 'dev:wipe-all-data',
+  DEV_RESET_USER_PASSWORD: 'dev:reset-user-password',
 
   // Audit
   AUDIT_GET_RECENT: 'audit:get-recent',

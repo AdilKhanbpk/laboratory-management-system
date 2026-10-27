@@ -95,22 +95,46 @@ describe('Integration: Asset & Finance Repositories', () => {
     expect(asset1.amount_paisa).toBe(4500000);
     expect(asset1.purchase_date).toBe(today);
 
-    // Update
+    // First Update
     const updated = assetRepo.updateAsset({
       id: asset1.id,
       amountPaisa: 4800000,
       notes: 'Price adjusted with GST',
+      editReason: 'First edit',
     });
     expect(updated.amount_paisa).toBe(4800000);
-    expect(updated.notes).toBe('Price adjusted with GST');
+    expect(updated.notes).toContain('Price adjusted with GST');
+    expect((updated.notes?.match(/\[EDIT HISTORY/gi) || []).length).toBe(1);
+
+    // Second Update (should NOT duplicate the first edit history)
+    const updated2 = assetRepo.updateAsset({
+      id: asset1.id,
+      amountPaisa: 5000000,
+      notes: 'Price adjusted with GST',
+      editReason: 'Second edit',
+    });
+    expect(updated2.amount_paisa).toBe(5000000);
+    expect((updated2.notes?.match(/\[EDIT HISTORY/gi) || []).length).toBe(2);
+
+    // Third Update (with dirty input notes containing old history from modal)
+    const updated3 = assetRepo.updateAsset({
+      id: asset1.id,
+      title: 'Centrifuge Machine Model-Pro',
+      notes: 'Price adjusted with GST\n\n[EDIT HISTORY 2026-10-27 ...] Should be stripped',
+      editReason: 'Third edit',
+    });
+    expect(updated3.title).toBe('Centrifuge Machine Model-Pro');
+    expect((updated3.notes?.match(/\[EDIT HISTORY/gi) || []).length).toBe(3);
+    expect(updated3.notes).toContain('Price adjusted with GST');
 
     // List and Summary
     const list = assetRepo.listAssets({ startDate: today, endDate: today });
     expect(list.length).toBe(1);
+    expect((list[0].notes?.match(/\[EDIT HISTORY/gi) || []).length).toBe(3);
 
     const summary = assetRepo.getSummary({ startDate: today, endDate: today });
     expect(summary.totalCount).toBe(1);
-    expect(summary.totalAmountPaisa).toBe(4800000);
+    expect(summary.totalAmountPaisa).toBe(5000000);
 
     // Delete
     const deleted = assetRepo.deleteAsset(asset1.id);
