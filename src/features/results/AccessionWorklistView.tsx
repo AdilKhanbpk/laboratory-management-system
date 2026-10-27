@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { WorklistOrderItem } from '../../types';
+import { WorklistOrderItem, SafeUser } from '../../types';
 import { formatDateTime, calculateAge } from '../../lib/utils';
 import { ResultEntryModal, VisitTestItem } from './ResultEntryModal';
 import { LabReportPreviewModal } from '../reports/LabReportPreviewModal';
@@ -27,6 +27,9 @@ export interface GroupedTestItem {
 export interface GroupedVisit {
   visitId: number;
   visitNumber: string;
+  operatorId?: number;
+  creatorRole?: string;
+  visitCreatedAt?: string;
   patientId: number;
   patientName: string;
   patientMrn: string;
@@ -93,7 +96,38 @@ function getToday(): string {
 
 type DatePreset = '1month' | '7days' | 'all' | 'custom';
 
-export const AccessionWorklistView: React.FC = () => {
+interface AccessionWorklistViewProps {
+  currentUser?: SafeUser | null;
+}
+
+export const AccessionWorklistView: React.FC<AccessionWorklistViewProps> = ({ currentUser }) => {
+  const [sessionUser, setSessionUser] = useState<SafeUser | null>(currentUser || null);
+
+  useEffect(() => {
+    if (currentUser !== undefined) {
+      setSessionUser(currentUser);
+    } else {
+      window.electronAPI.auth.getSession().then((res) => {
+        if (res.success && res.data?.user) {
+          setSessionUser(res.data.user);
+        }
+      }).catch(() => {});
+    }
+  }, [currentUser]);
+
+  const isAdmin = sessionUser?.role === 'admin';
+
+  const canEditReport = (v: GroupedVisit): boolean => {
+    if (isAdmin) return true;
+    if (v.creatorRole === 'admin') return false;
+    if (v.operatorId !== sessionUser?.id) return false;
+    if (v.visitCreatedAt) {
+      const createdTime = new Date(v.visitCreatedAt).getTime();
+      const diffHours = (Date.now() - createdTime) / (1000 * 60 * 60);
+      if (diffHours > 10) return false;
+    }
+    return true;
+  };
   const [worklist, setWorklist] = useState<WorklistOrderItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -173,6 +207,9 @@ export const AccessionWorklistView: React.FC = () => {
         const created: GroupedVisit = {
           visitId: item.visitId,
           visitNumber: item.visitNumber,
+          operatorId: item.operatorId,
+          creatorRole: item.creatorRole,
+          visitCreatedAt: item.visitCreatedAt,
           patientId: item.patientId,
           patientName: item.patientName,
           patientMrn: item.patientMrn,
@@ -504,14 +541,20 @@ export const AccessionWorklistView: React.FC = () => {
                         <ul className="space-y-1.5">
                           {visit.tests.map((t) => (
                             <li key={t.orderItemId} className="flex items-baseline gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenVisitResults(visit, t.orderItemId)}
-                                title={`Open results for ${t.testName}`}
-                                className="text-left font-medium hover:text-[#0F766E] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
-                              >
-                                {t.testName}
-                              </button>
+                              {canEditReport(visit) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenVisitResults(visit, t.orderItemId)}
+                                  title={`Open results for ${t.testName}`}
+                                  className="text-left font-medium hover:text-[#0F766E] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
+                                >
+                                  {t.testName}
+                                </button>
+                              ) : (
+                                <span className="text-left font-medium text-slate-800">
+                                  {t.testName}
+                                </span>
+                              )}
                               <span className="text-xs text-[#64748B]">{t.testCode}</span>
                               {visit.tests.length > 1 && (
                                 <span className="text-xs text-[#64748B] tabular-nums">
@@ -557,15 +600,21 @@ export const AccessionWorklistView: React.FC = () => {
                       <td className={`${td} whitespace-nowrap`}>
                         <div className="flex items-center justify-end gap-2">
                           {!isFinalized ? (
-                            <button
-                              type="button"
-                              className={smallPrimaryBtn}
-                              onClick={() => handleOpenVisitResults(visit)}
-                            >
-                              {visit.overallStatus === 'draft' || visit.overallStatus === 'reviewed'
-                                ? 'Continue entry'
-                                : 'Enter results'}
-                            </button>
+                            canEditReport(visit) ? (
+                              <button
+                                type="button"
+                                className={smallPrimaryBtn}
+                                onClick={() => handleOpenVisitResults(visit)}
+                              >
+                                {visit.overallStatus === 'draft' || visit.overallStatus === 'reviewed'
+                                  ? 'Continue entry'
+                                  : 'Enter results'}
+                              </button>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">
+                                {visit.creatorRole === 'admin' ? 'Admin bill' : 'Locked (>10h)'}
+                              </span>
+                            )
                           ) : (
                             <>
                               <button
@@ -575,14 +624,16 @@ export const AccessionWorklistView: React.FC = () => {
                               >
                                 Report
                               </button>
-                              <button
-                                type="button"
-                                className={smallBtn}
-                                onClick={() => handleOpenVisitResults(visit)}
-                                title="Edit results or update report"
-                              >
-                                Edit results
-                              </button>
+                              {canEditReport(visit) && (
+                                <button
+                                  type="button"
+                                  className={smallBtn}
+                                  onClick={() => handleOpenVisitResults(visit)}
+                                  title="Edit results or update report"
+                                >
+                                  Edit results
+                                </button>
+                              )}
                             </>
                           )}
                         </div>

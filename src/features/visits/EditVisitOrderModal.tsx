@@ -3,6 +3,7 @@ import {
   VisitDetail,
   LabTest,
   Doctor,
+  SafeUser,
   UpdateVisitOrderAndInvoiceInput,
 } from '../../types';
 import { formatCurrency, parseCurrencyToPaisa, calculateAge } from '../../lib/utils';
@@ -69,6 +70,30 @@ export const EditVisitOrderModal: React.FC<EditVisitOrderModalProps> = ({
   const [additionalPaymentInput, setAdditionalPaymentInput] = useState<string>('0');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'cheque' | 'other'>('cash');
   const [paymentReference, setPaymentReference] = useState<string>('');
+
+  // Session & Security
+  const [sessionUser, setSessionUser] = useState<SafeUser | null>(null);
+
+  useEffect(() => {
+    window.electronAPI.auth.getSession().then((res) => {
+      if (res.success && res.data?.user) {
+        setSessionUser(res.data.user);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const isUserAdmin = sessionUser?.role === 'admin';
+  const isLockedForUser = React.useMemo(() => {
+    if (!visitDetail || isUserAdmin) return false;
+    const v = visitDetail.visit;
+    if (v.creator_role === 'admin') return true;
+    if (sessionUser && v.operator_id !== sessionUser.id) return true;
+    if (v.created_at) {
+      const diffHours = (Date.now() - new Date(v.created_at).getTime()) / (1000 * 60 * 60);
+      if (diffHours > 10) return true;
+    }
+    return false;
+  }, [visitDetail, isUserAdmin, sessionUser]);
 
   useEffect(() => {
     if (!isOpen || !visitId) return;
@@ -331,6 +356,11 @@ export const EditVisitOrderModal: React.FC<EditVisitOrderModalProps> = ({
 
         {/* Content */}
         <div className="p-5 overflow-y-auto space-y-5 flex-1">
+          {isLockedForUser && (
+            <Alert type="warning">
+              🔒 Editing Locked: Bills created by an administrator or older than 10 hours cannot be modified by staff. Only administrators can edit this bill.
+            </Alert>
+          )}
           {errorMessage && <Alert type="error">{errorMessage}</Alert>}
           {successMessage && <Alert type="success">{successMessage}</Alert>}
 
@@ -758,7 +788,7 @@ export const EditVisitOrderModal: React.FC<EditVisitOrderModalProps> = ({
             size="sm"
             onClick={handleSave}
             isLoading={isSaving}
-            disabled={isLoading || isSaving || isOverpayment}
+            disabled={isLoading || isSaving || isOverpayment || isLockedForUser}
             className="bg-[#0F766E] hover:bg-[#115E59]"
           >
             <Save className="w-3.5 h-3.5 mr-1.5" />

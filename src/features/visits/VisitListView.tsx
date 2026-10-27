@@ -99,6 +99,18 @@ export const VisitListView: React.FC<VisitListViewProps> = ({
 
   const isAdmin = sessionUser?.role === 'admin';
 
+  const canEditBill = (v: Visit): boolean => {
+    if (isAdmin) return true;
+    if (v.creator_role === 'admin') return false;
+    if (v.operator_id !== sessionUser?.id) return false;
+    if (v.created_at) {
+      const createdTime = new Date(v.created_at).getTime();
+      const diffHours = (Date.now() - createdTime) / (1000 * 60 * 60);
+      if (diffHours > 10) return false;
+    }
+    return true;
+  };
+
   const [data, setData] = useState<VisitSearchResult>({
     visits: [],
     total: 0,
@@ -428,14 +440,16 @@ export const VisitListView: React.FC<VisitListViewProps> = ({
 
                       <td className={`${td} whitespace-nowrap`}>
                         <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            className={smallBtn}
-                            onClick={() => setEditingVisitId(v.id)}
-                            title="Edit order, doctor, tests or bill discount"
-                          >
-                            Edit
-                          </button>
+                          {canEditBill(v) && (
+                            <button
+                              type="button"
+                              className={smallBtn}
+                              onClick={() => setEditingVisitId(v.id)}
+                              title="Edit order, doctor, tests or bill discount"
+                            >
+                              Edit
+                            </button>
+                          )}
                           <button
                             type="button"
                             className={smallBtn}

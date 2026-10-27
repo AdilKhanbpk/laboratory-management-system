@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { formatDateTime, calculateAge } from '../../lib/utils';
 import { RangeMatcher, ParameterRangeRule, EvaluationResult } from '../../../electron/services/range-matcher';
-import { OrderItem, Patient, TestResult } from '../../types';
+import { OrderItem, Patient, TestResult, Visit, SafeUser } from '../../types';
 import { ResultAmendmentModal } from './ResultAmendmentModal';
 import { X, Save, CheckCircle2, FileCheck2, Loader2, AlertCircle } from 'lucide-react';
 
@@ -102,6 +102,28 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
 
   const [sections, setSections] = useState<TestSection[]>([]);
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [loadedVisit, setLoadedVisit] = useState<Visit | null>(null);
+  const [sessionUser, setSessionUser] = useState<SafeUser | null>(null);
+
+  useEffect(() => {
+    window.electronAPI.auth.getSession().then((res) => {
+      if (res.success && res.data?.user) {
+        setSessionUser(res.data.user);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const isUserAdmin = sessionUser?.role === 'admin';
+  const isLockedForUser = useMemo(() => {
+    if (!loadedVisit || isUserAdmin) return false;
+    if (loadedVisit.creator_role === 'admin') return true;
+    if (sessionUser && loadedVisit.operator_id !== sessionUser.id) return true;
+    if (loadedVisit.created_at) {
+      const diffHours = (Date.now() - new Date(loadedVisit.created_at).getTime()) / (1000 * 60 * 60);
+      if (diffHours > 10) return true;
+    }
+    return false;
+  }, [loadedVisit, isUserAdmin, sessionUser]);
 
   // Parameter ids are unique, so one map holds the values for every test on the page
   const [formValues, setFormValues] = useState<Record<number, { value: string; notes: string }>>({});
@@ -131,12 +153,14 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
       const loaded: TestSection[] = [];
       const initialForm: Record<number, { value: string; notes: string }> = {};
       let firstPatient: Patient | null = null;
+      let firstVisit: Visit | null = null;
       let firstError: string | null = null;
 
       for (const res of responses) {
         if (res.success && res.data) {
           loaded.push({ orderItem: res.data.orderItem, parameters: res.data.parameters });
           if (!firstPatient) firstPatient = res.data.patient;
+          if (!firstVisit && res.data.visit) firstVisit = res.data.visit;
           for (const p of res.data.parameters) {
             initialForm[p.parameter.id] = {
               value: p.currentResult?.result_value || '',
@@ -150,6 +174,7 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
 
       setSections(loaded);
       setPatient(firstPatient);
+      setLoadedVisit(firstVisit);
       setFormValues(initialForm);
       if (firstError) setErrorMessage(firstError);
     } catch (err: any) {
@@ -165,6 +190,7 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
     } else if (!isOpen) {
       setSections([]);
       setPatient(null);
+      setLoadedVisit(null);
       setFormValues({});
       setErrorMessage(null);
       setSuccessMessage(null);
@@ -402,7 +428,7 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
                       value={currentVal}
                       onChange={(e) => handleValueChange(id, e.target.value)}
                       onKeyDown={handleResultKeyDown}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || isLockedForUser}
                       aria-invalid={invalid}
                       className={`h-8 w-full min-w-0 px-2.5 rounded-md border bg-white text-[13px] tabular-nums focus:outline-none focus:ring-1 ${
                         invalid || critical
@@ -435,6 +461,7 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
                     onChange={(e) => handleNotesChange(id, e.target.value)}
                     placeholder="Note"
                     aria-label={`Note for ${p.parameter.name}`}
+                    disabled={isSubmitting || isLockedForUser}
                     className="h-8 w-full min-w-0 px-2.5 rounded-md border border-[#CBD5E1] text-[13px] bg-white text-[#1F2937] placeholder:text-[#94A3B8] focus:outline-none focus:border-[#0F766E] focus:ring-1 focus:ring-[#0F766E]"
                   />
                 </td>
@@ -498,6 +525,17 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
 
         {/* Body: every test on one page */}
         <div ref={bodyRef} className="px-5 py-4 overflow-y-auto flex-1 space-y-4 bg-[#F5F7FA]">
+          {isLockedForUser && (
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 border-l-4 border-l-amber-600 rounded-lg text-[13px] text-amber-900">
+              <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+              <p>
+                <span className="font-semibold">🔒 Read-only view:</span>{' '}
+                <span>
+                  You cannot edit results for bills created by an administrator, bills created by other staff, or bills created more than 10 hours ago. Only administrators can edit this report.
+                </span>
+              </p>
+            </div>
+          )}
           {errorMessage && <Notice tone="error">{errorMessage}</Notice>}
           {successMessage && <Notice tone="success">{successMessage}</Notice>}
 
@@ -593,7 +631,7 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
             <button
               type="button"
               onClick={handleSaveDraft}
-              disabled={isLoading || isSubmitting || totalParameters === 0}
+              disabled={isLoading || isSubmitting || totalParameters === 0 || isLockedForUser}
               className={secondaryBtn}
             >
               {isSaving ? (
@@ -607,7 +645,7 @@ export const ResultEntryModal: React.FC<ResultEntryModalProps> = ({
             <button
               type="button"
               onClick={handleFinalizeReport}
-              disabled={isLoading || isSubmitting || totalParameters === 0}
+              disabled={isLoading || isSubmitting || totalParameters === 0 || isLockedForUser}
               className={primaryBtn}
             >
               {isFinalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCheck2 className="w-4 h-4" />}

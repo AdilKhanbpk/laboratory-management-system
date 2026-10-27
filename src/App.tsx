@@ -281,7 +281,7 @@ export const App: React.FC = () => {
                   />
                 )}
 
-                {activeTab === 'results' && <AccessionWorklistView />}
+                {activeTab === 'results' && <AccessionWorklistView currentUser={user} />}
 
                 {activeTab === 'reports' && <DoctorStatisticsView />}
 

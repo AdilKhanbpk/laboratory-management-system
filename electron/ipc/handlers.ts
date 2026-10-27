@@ -1076,6 +1076,49 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
         return { success: false, error: msg };
       }
 
+      // Security & Authorization: Only Admin or Creator within 10 hours can edit bills
+      const db = ctx.dbManager.getDatabase();
+      const existingVisit = db.prepare(`
+        SELECT v.id, v.operator_id, v.created_at, u.role as creator_role, u.full_name as creator_name
+        FROM visits v
+        JOIN app_users u ON v.operator_id = u.id
+        WHERE v.id = ?
+      `).get(parsed.data.visitId) as { id: number; operator_id: number; created_at: string; creator_role: string; creator_name: string } | undefined;
+
+      if (!existingVisit) {
+        return { success: false, error: 'Visit record not found.' };
+      }
+
+      const isUserAdmin = currentSession.user.role === 'admin';
+
+      if (!isUserAdmin) {
+        // 1. Bills created by Admin cannot be edited by non-admins
+        if (existingVisit.creator_role === 'admin') {
+          return {
+            success: false,
+            error: 'Access denied: Bills created by an Administrator cannot be edited by staff. Only administrators can edit this bill.',
+          };
+        }
+
+        // 2. Non-admins can only edit bills they created themselves
+        if (existingVisit.operator_id !== currentSession.user.id) {
+          return {
+            success: false,
+            error: 'Access denied: You can only edit bills that you created yourself.',
+          };
+        }
+
+        // 3. 10 hours timeline limitation
+        const createdAtTime = new Date(existingVisit.created_at).getTime();
+        const diffHours = (Date.now() - createdAtTime) / (1000 * 60 * 60);
+        if (diffHours > 10) {
+          return {
+            success: false,
+            error: 'Editing expired: Bills can only be edited within 10 hours of creation. This bill is now locked. Please contact an administrator.',
+          };
+        }
+      }
+
       const detail = ctx.visitRepo.updateVisitOrderAndInvoice(parsed.data, currentSession.user.id);
       return { success: true, data: detail };
     } catch (err: any) {
@@ -1183,13 +1226,87 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
   ipcMain.handle(IPC_CHANNELS.RESULTS_SAVE_DRAFT, async (_, rawInput: unknown): Promise<IpcResponse<TestResult[]>> => {
     try {
       if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const activeUser = currentSession.user;
       const parsed = SaveDraftResultsSchema.safeParse(rawInput);
       if (!parsed.success) {
         const msg = parsed.error.issues.map((i) => i.message).join(' ');
         return { success: false, error: msg };
       }
 
-      const results = ctx.resultRepo.saveDraftResults(parsed.data, currentSession.user.id);
+      // Security & Authorization: Check bill creator and 10 hours timeline
+      const db = ctx.dbManager.getDatabase();
+      const itemInfo = db.prepare(`
+        SELECT oi.id, oi.visit_id, v.operator_id as visit_operator_id, v.created_at as visit_created_at,
+               u.role as visit_creator_role
+        FROM order_items oi
+        JOIN visits v ON oi.visit_id = v.id
+        JOIN app_users u ON v.operator_id = u.id
+        WHERE oi.id = ?
+      `).get(parsed.data.orderItemId) as {
+        id: number;
+        visit_id: number;
+        visit_operator_id: number;
+        visit_created_at: string;
+        visit_creator_role: string;
+      } | undefined;
+
+      if (!itemInfo) {
+        return { success: false, error: 'Order item not found.' };
+      }
+
+      if (activeUser.role !== 'admin') {
+        // 1. Reports for bills created by Admin cannot be edited by non-admins
+        if (itemInfo.visit_creator_role === 'admin') {
+          return {
+            success: false,
+            error: 'Access denied: Reports for bills created by an Administrator cannot be edited by staff. Only administrators can edit this report.',
+          };
+        }
+
+        // Check if existing results were entered by another user
+        const existingResults = db.prepare(`
+          SELECT entered_by, created_at FROM test_results WHERE order_item_id = ?
+        `).all(parsed.data.orderItemId) as Array<{ entered_by: number; created_at: string }>;
+
+        if (existingResults.length > 0) {
+          const otherUserEntered = existingResults.some((r) => r.entered_by !== activeUser.id);
+          if (otherUserEntered) {
+            return {
+              success: false,
+              error: 'Access denied: You can only edit reports that you created/entered yourself.',
+            };
+          }
+
+          // 10 hours timeline check
+          const creationTime = new Date(existingResults[0].created_at || itemInfo.visit_created_at).getTime();
+          const diffHours = (Date.now() - creationTime) / (1000 * 60 * 60);
+          if (diffHours > 10) {
+            return {
+              success: false,
+              error: 'Editing expired: Reports can only be edited within 10 hours of creation. This report is now locked. Please contact an administrator.',
+            };
+          }
+        } else {
+          // New results on this order item:
+          if (itemInfo.visit_operator_id !== activeUser.id) {
+            return {
+              success: false,
+              error: 'Access denied: You can only enter reports for bills you created yourself.',
+            };
+          }
+
+          const visitCreationTime = new Date(itemInfo.visit_created_at).getTime();
+          const diffHours = (Date.now() - visitCreationTime) / (1000 * 60 * 60);
+          if (diffHours > 10) {
+            return {
+              success: false,
+              error: 'Editing expired: Results can only be entered within 10 hours of bill creation. This bill is now locked. Please contact an administrator.',
+            };
+          }
+        }
+      }
+
+      const results = ctx.resultRepo.saveDraftResults(parsed.data, activeUser.id);
       return { success: true, data: results };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to save draft results.' };
@@ -1228,6 +1345,43 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
         return { success: false, error: msg };
       }
 
+      const db = ctx.dbManager.getDatabase();
+      const visitInfo = db.prepare(`
+        SELECT v.id, v.operator_id, v.created_at, u.role as creator_role
+        FROM visits v
+        JOIN app_users u ON v.operator_id = u.id
+        WHERE v.id = ?
+      `).get(parsed.data.visitId) as { id: number; operator_id: number; created_at: string; creator_role: string } | undefined;
+
+      if (!visitInfo) {
+        return { success: false, error: 'Visit record not found.' };
+      }
+
+      if (currentSession.user.role !== 'admin') {
+        if (visitInfo.creator_role === 'admin') {
+          return {
+            success: false,
+            error: 'Access denied: Reports for bills created by an Administrator cannot be finalized by staff. Only administrators can finalize this report.',
+          };
+        }
+
+        if (visitInfo.operator_id !== currentSession.user.id) {
+          return {
+            success: false,
+            error: 'Access denied: You can only finalize reports that you created yourself.',
+          };
+        }
+
+        const createdAtTime = new Date(visitInfo.created_at).getTime();
+        const diffHours = (Date.now() - createdAtTime) / (1000 * 60 * 60);
+        if (diffHours > 10) {
+          return {
+            success: false,
+            error: 'Timeline expired: Reports can only be finalized within 10 hours of creation. Please contact an administrator.',
+          };
+        }
+      }
+
       const snapshot = ctx.resultRepo.finalizeReport(parsed.data, currentSession.user.id);
       return { success: true, data: snapshot };
     } catch (err: any) {
@@ -1243,6 +1397,55 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       if (!parsed.success) {
         const msg = parsed.error.issues.map((i) => i.message).join(' ');
         return { success: false, error: msg };
+      }
+
+      const db = ctx.dbManager.getDatabase();
+      const resultInfo = db.prepare(`
+        SELECT tr.id, tr.entered_by, tr.created_at as result_created_at,
+               v.id as visit_id, v.operator_id, v.created_at as visit_created_at,
+               u.role as creator_role
+        FROM test_results tr
+        JOIN order_items oi ON tr.order_item_id = oi.id
+        JOIN visits v ON oi.visit_id = v.id
+        JOIN app_users u ON v.operator_id = u.id
+        WHERE tr.id = ?
+      `).get(parsed.data.resultId) as {
+        id: number;
+        entered_by: number;
+        result_created_at: string;
+        visit_id: number;
+        operator_id: number;
+        visit_created_at: string;
+        creator_role: string;
+      } | undefined;
+
+      if (!resultInfo) {
+        return { success: false, error: 'Test result record not found.' };
+      }
+
+      if (currentSession.user.role !== 'admin') {
+        if (resultInfo.creator_role === 'admin') {
+          return {
+            success: false,
+            error: 'Access denied: Results for bills created by an Administrator cannot be amended by staff. Only administrators can amend this report.',
+          };
+        }
+
+        if (resultInfo.entered_by !== currentSession.user.id && resultInfo.operator_id !== currentSession.user.id) {
+          return {
+            success: false,
+            error: 'Access denied: You can only amend reports that you created yourself.',
+          };
+        }
+
+        const creationTime = new Date(resultInfo.result_created_at || resultInfo.visit_created_at).getTime();
+        const diffHours = (Date.now() - creationTime) / (1000 * 60 * 60);
+        if (diffHours > 10) {
+          return {
+            success: false,
+            error: 'Amendment expired: Reports can only be amended within 10 hours of creation. Please contact an administrator.',
+          };
+        }
       }
 
       const amended = ctx.resultRepo.amendResult(parsed.data, currentSession.user.id);

@@ -430,15 +430,14 @@ export class VisitRepository {
         paymentStatus = 'unpaid';
       }
 
-      // 5. Update Visit
+      // 5. Update Visit (preserve original operator_id creator)
       db.prepare(`
         UPDATE visits
-        SET referring_doctor_id = ?, notes = ?, operator_id = ?, updated_at = ?
+        SET referring_doctor_id = ?, notes = ?, updated_at = ?
         WHERE id = ?
       `).run(
         input.referringDoctorId || null,
         input.notes ? input.notes.trim() : null,
-        operatorId,
         now,
         input.visitId
       );
@@ -572,6 +571,7 @@ export class VisitRepository {
           d.full_name as doctor_name,
           d.specialization as doctor_specialization,
           u.full_name as operator_name,
+          u.role as creator_role,
           i.invoice_number,
           i.final_total,
           i.paid_amount,
@@ -735,6 +735,8 @@ export class VisitRepository {
       .prepare(`
         SELECT
           v.*,
+          u.role as creator_role,
+          u.full_name as operator_name,
           p.full_name as patient_name,
           p.patient_mrn,
           p.gender as patient_gender,
@@ -749,6 +751,7 @@ export class VisitRepository {
         FROM visits v
         JOIN patients p ON v.patient_id = p.id
         LEFT JOIN doctors d ON v.referring_doctor_id = d.id
+        JOIN app_users u ON v.operator_id = u.id
         LEFT JOIN invoices i ON v.id = i.visit_id
         ${whereClause}
         ORDER BY v.id DESC

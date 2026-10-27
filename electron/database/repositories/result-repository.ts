@@ -152,6 +152,9 @@ export class ResultRepository {
         oi.id as orderItemId,
         v.id as visitId,
         v.visit_number as visitNumber,
+        v.operator_id as operatorId,
+        v.created_at as visitCreatedAt,
+        u.role as creatorRole,
         p.id as patientId,
         p.full_name as patientName,
         p.patient_mrn as patientMrn,
@@ -168,6 +171,7 @@ export class ResultRepository {
         COALESCE(res_summary.entered_count, 0) as parametersEntered
       FROM order_items oi
       JOIN visits v ON oi.visit_id = v.id
+      JOIN app_users u ON v.operator_id = u.id
       JOIN patients p ON v.patient_id = p.id
       LEFT JOIN doctors d ON v.referring_doctor_id = d.id
       LEFT JOIN (
@@ -209,6 +213,9 @@ export class ResultRepository {
       resultStatus: r.resultStatus,
       parametersTotal: Number(r.parametersTotal),
       parametersEntered: Number(r.parametersEntered),
+      operatorId: r.operatorId,
+      creatorRole: r.creatorRole,
+      visitCreatedAt: r.visitCreatedAt,
     }));
   }
 
@@ -218,6 +225,7 @@ export class ResultRepository {
   public getOrderResults(orderItemId: number): {
     orderItem: OrderItem;
     patient: Patient;
+    visit: Visit;
     parameters: Array<{
       parameter: { id: number; name: string; unit: string | null; type: 'numeric' | 'text' | 'options'; displayOrder: number };
       currentResult: TestResult | null;
@@ -235,7 +243,12 @@ export class ResultRepository {
     }
 
     const visit = db
-      .prepare(`SELECT * FROM visits WHERE id = ?`)
+      .prepare(`
+        SELECT v.*, u.role as creator_role, u.full_name as operator_name
+        FROM visits v
+        JOIN app_users u ON v.operator_id = u.id
+        WHERE v.id = ?
+      `)
       .get(orderItem.visit_id) as Visit;
 
     const patient = db
@@ -303,6 +316,7 @@ export class ResultRepository {
     return {
       orderItem,
       patient,
+      visit,
       parameters: parameterDetails,
     };
   }

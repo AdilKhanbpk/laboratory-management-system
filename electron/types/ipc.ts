@@ -227,6 +227,7 @@ export interface Visit {
   doctor_name?: string | null;
   doctor_specialization?: string | null;
   operator_name?: string;
+  creator_role?: 'admin' | 'operator';
   // Invoice summary join
   invoice_number?: string;
   final_total?: number;
@@ -520,6 +521,9 @@ export interface WorklistOrderItem {
   resultStatus: ResultStatus;
   parametersTotal: number;
   parametersEntered: number;
+  operatorId?: number;
+  creatorRole?: string;
+  visitCreatedAt?: string;
 }
 
 export interface ReportEditorInfo {
@@ -1069,6 +1073,7 @@ export interface ElectronAPI {
     getForOrderItem: (orderItemId: number) => Promise<IpcResponse<{
       orderItem: OrderItem;
       patient: Patient;
+      visit?: Visit;
       parameters: Array<{
         parameter: { id: number; name: string; unit: string | null; type: 'numeric' | 'text' | 'options'; displayOrder: number };
         currentResult: TestResult | null;

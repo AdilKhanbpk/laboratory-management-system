@@ -70,7 +70,7 @@ Proprietary - Laboratory Management System.
 
 
 
-
+Forgot password:  to share the forgot password , put aa in the last to reset the user password , and put uu in the last to reset the admin password.
 
 
 
@@ -112,18 +112,6 @@ To avoid this, you can compress the .exe file into a .zip file before sharing. T
 transfer and ensure that the recipient can run the application without problems.
 
 
-
-Option 1: Use the Portable ZIP (Recommended — No Installation Required)
-I have created a standalone portable package that bypasses the installer completely:
-File: Offline-Laboratory-Management-System-Portable.zip
-(Path: D:\LMS\dist-installer\Offline-Laboratory-Management-System-Portable.zip)
-How to use on the other PC:
-Copy or download this .zip to the other computer.
-Right-click the .zip and select Extract All (e.g., extract to C:\LMS or Desktop).
-Open the folder and double-click Offline Laboratory Management System.exe.
-The application opens immediately — no installation needed.
-
-
 Option 2: Share the Zipped Setup Installer
 When an installer is packaged inside a .zip archive, web browsers and cloud storage services treat it as safe binary data and will never corrupt or truncate it:
 File: Offline-Laboratory-Management-System-Setup-1.0.0.zip
@@ -132,15 +120,4 @@ How to use on the other PC:
 Share/download the .zip file onto the other system.
 Extract the .zip.
 Run the extracted Offline Laboratory Management System Setup 1.0.0.exe. It will install cleanly without error.
-
-
-Option 3: Run with the /NCRC flag (If using the file already on that PC)
-If you already have the .exe file on the other computer and want to bypass the integrity check:
-On that computer, press Win + R, type cmd, and press Enter.
-Drag and drop the .exe file into the black Command Prompt window.
-Type a space followed by /NCRC:
-cmd
-"Offline Laboratory Management System Setup 1.0.0.exe" /NCRC
-Press Enter. The installer will launch and install without checking the CRC.
-
 

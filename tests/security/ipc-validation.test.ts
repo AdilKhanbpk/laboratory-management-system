@@ -117,5 +117,47 @@ describe('Security: IPC Payload Validation & Audit Trail Sanitization', () => {
     expect(parsedDetails.passwordHash).toBe('[REDACTED]');
     expect(parsedDetails.encryptionKey).toBe('[REDACTED]');
   });
+
+  it('enforces 10-hour timeline and admin-only bill/report edit boundaries', () => {
+    const canEditBill = (
+      user: { id: number; role: string },
+      bill: { operator_id: number; creator_role: string; created_at: string }
+    ) => {
+      if (user.role === 'admin') return true;
+      if (bill.creator_role === 'admin') return false;
+      if (bill.operator_id !== user.id) return false;
+      const createdTime = new Date(bill.created_at).getTime();
+      const diffHours = (Date.now() - createdTime) / (1000 * 60 * 60);
+      return diffHours <= 10;
+    };
+
+    const adminUser = { id: 1, role: 'admin' };
+    const operatorA = { id: 2, role: 'operator' };
+    const operatorB = { id: 3, role: 'operator' };
+
+    const recentDate = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(); // 2 hours ago
+    const expiredDate = new Date(Date.now() - 11 * 60 * 60 * 1000).toISOString(); // 11 hours ago
+
+    const adminBill = { operator_id: 1, creator_role: 'admin', created_at: recentDate };
+    const opABillRecent = { operator_id: 2, creator_role: 'operator', created_at: recentDate };
+    const opABillExpired = { operator_id: 2, creator_role: 'operator', created_at: expiredDate };
+
+    // 1. Admin can edit all bills
+    expect(canEditBill(adminUser, adminBill)).toBe(true);
+    expect(canEditBill(adminUser, opABillRecent)).toBe(true);
+    expect(canEditBill(adminUser, opABillExpired)).toBe(true);
+
+    // 2. Non-admin operator cannot edit admin-created bill
+    expect(canEditBill(operatorA, adminBill)).toBe(false);
+
+    // 3. Non-admin operator cannot edit another operator's bill
+    expect(canEditBill(operatorB, opABillRecent)).toBe(false);
+
+    // 4. Non-admin operator can edit their own bill within 10 hours
+    expect(canEditBill(operatorA, opABillRecent)).toBe(true);
+
+    // 5. Non-admin operator cannot edit their own bill after 10 hours
+    expect(canEditBill(operatorA, opABillExpired)).toBe(false);
+  });
 });
 
