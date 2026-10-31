@@ -143,6 +143,16 @@ export const IPC_CHANNELS = {
   TEMPLATES_PRINT_TEST: 'templates:print-test',
   TEMPLATES_EXPORT_PDF_TEST: 'templates:export-pdf-test',
 
+  // Doctor Commission & Settlements
+  DOCTOR_COMMISSION_GET_OVERVIEW: 'doctor-commission:get-overview',
+  DOCTOR_COMMISSION_GET_SUMMARY: 'doctor-commission:get-summary',
+  DOCTOR_COMMISSION_GET_VISITS: 'doctor-commission:get-visits',
+  DOCTOR_PAYOUTS_LIST: 'doctor-commission:list-payouts',
+  DOCTOR_PAYOUTS_RECORD: 'doctor-commission:record-payout',
+  DOCTOR_PAYOUTS_UPDATE: 'doctor-commission:update-payout',
+  DOCTOR_COMMISSION_EXPORT_PDF: 'doctor-commission:export-pdf',
+  DOCTOR_COMMISSION_PRINT: 'doctor-commission:print',
+
   // System & App
   APP_GET_INFO: 'app:get-info',
   APP_CHECK_INTEGRITY: 'app:check-integrity',

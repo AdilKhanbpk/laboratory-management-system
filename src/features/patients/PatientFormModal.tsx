@@ -281,7 +281,7 @@ export const PatientFormModal: React.FC<PatientFormModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Age (Years &amp; Months)
+                Age
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <input

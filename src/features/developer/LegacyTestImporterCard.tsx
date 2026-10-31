@@ -223,8 +223,10 @@ export const LegacyTestImporterCard: React.FC<LegacyTestImporterCardProps> = ({ 
             <span className="text-xs font-semibold text-slate-800 block">Available Source Database</span>
             <div className="flex items-center gap-2">
               <Database className="w-4 h-4 text-slate-500 shrink-0" />
-              <span className="text-xs font-mono text-slate-600 break-all select-all">
-                {detection?.filePath || 'Scanning workspace for legacy backup...'}
+              <span className={`text-xs font-mono break-all select-all ${detection?.detected ? 'text-slate-800 font-semibold' : 'text-amber-800'}`}>
+                {isDetecting
+                  ? 'Scanning workspace & bundled resources for legacy backup...'
+                  : detection?.filePath || 'No backup file detected automatically. Click "Browse Other File" to select your backup database.'}
               </span>
             </div>
           </div>

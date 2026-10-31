@@ -59,6 +59,8 @@ import {
   ReversePartnershipTransactionSchema,
   ClosePartnershipMonthSchema,
   RecordDoctorCommissionPaymentSchema,
+  RecordDoctorPayoutSchema,
+  UpdateDoctorPayoutSchema,
   RecordInvestorCapitalSchema,
   UpdatePartnershipSplitSchema,
   PartnershipDashboardData,
@@ -98,6 +100,7 @@ import { PatientHistoryRepository } from '../database/repositories/patient-histo
 import { TemplateRepository } from '../database/repositories/template-repository';
 import { AssetRepository } from '../database/repositories/asset-repository';
 import { FinanceRepository } from '../database/repositories/finance-repository';
+import { DoctorCommissionRepository } from '../database/repositories/doctor-commission-repository';
 import { PdfService } from '../services/pdf-service';
 import { BackupService } from '../services/backup-service';
 import { RestoreService } from '../services/restore-service';
@@ -129,6 +132,7 @@ export interface HandlerContext {
   templateRepo: TemplateRepository;
   assetRepo: AssetRepository;
   financeRepo: FinanceRepository;
+  doctorCommissionRepo: DoctorCommissionRepository;
   logoService: LogoService;
   backupService: BackupService;
   restoreService: RestoreService;
@@ -2515,6 +2519,179 @@ export function registerIpcHandlers(ctx: HandlerContext): void {
       return { success: true, data: res };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to clear technician payouts.' };
+    }
+  });
+
+  // --- DOCTOR COMMISSION & SETTLEMENTS HANDLERS ---
+
+  // Doctor Commission Overview
+  ipcMain.handle(IPC_CHANNELS.DOCTOR_COMMISSION_GET_OVERVIEW, async (_, query: any): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const overview = ctx.doctorCommissionRepo.getCommissionOverview(query || {});
+      return { success: true, data: overview };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to calculate doctor commission overview.' };
+    }
+  });
+
+  // Doctor Commission Summary (specific doctor)
+  ipcMain.handle(IPC_CHANNELS.DOCTOR_COMMISSION_GET_SUMMARY, async (_, { doctorId, query }: any): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      if (!doctorId || typeof doctorId !== 'number') return { success: false, error: 'Invalid doctor ID.' };
+      const summary = ctx.doctorCommissionRepo.getDoctorSummary(doctorId, query || {});
+      return { success: true, data: summary };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to retrieve doctor commission summary.' };
+    }
+  });
+
+  // Doctor Referred Visits
+  ipcMain.handle(IPC_CHANNELS.DOCTOR_COMMISSION_GET_VISITS, async (_, { doctorId, query }: any): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      if (!doctorId || typeof doctorId !== 'number') return { success: false, error: 'Invalid doctor ID.' };
+      const visits = ctx.doctorCommissionRepo.getDoctorReferredVisits(doctorId, query || {});
+      return { success: true, data: visits };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to list doctor referred visits.' };
+    }
+  });
+
+  // Doctor Payouts List
+  ipcMain.handle(IPC_CHANNELS.DOCTOR_PAYOUTS_LIST, async (_, query: any): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const payouts = ctx.doctorCommissionRepo.listDoctorPayouts(query || {});
+      return { success: true, data: payouts };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to list doctor payouts.' };
+    }
+  });
+
+  // Record Doctor Payout
+  ipcMain.handle(IPC_CHANNELS.DOCTOR_PAYOUTS_RECORD, async (_, rawInput: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = RecordDoctorPayoutSchema.safeParse(rawInput);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid payout data.' };
+      }
+
+      const payout = ctx.doctorCommissionRepo.recordDoctorPayout(parsed.data, currentSession.user.id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'DOCTOR_COMMISSION_PAYMENT_RECORDED',
+        entityType: 'DOCTOR',
+        entityId: String(parsed.data.doctorId),
+        details: {
+          amount: parsed.data.amountPaisa,
+          paymentDate: parsed.data.paymentDate,
+          method: parsed.data.paymentMethod || 'cash',
+        },
+      });
+
+      return { success: true, data: payout };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to record doctor payout.' };
+    }
+  });
+
+  // Update Doctor Payout
+  ipcMain.handle(IPC_CHANNELS.DOCTOR_PAYOUTS_UPDATE, async (_, rawInput: unknown): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const parsed = UpdateDoctorPayoutSchema.safeParse(rawInput);
+      if (!parsed.success) {
+        return { success: false, error: parsed.error.issues?.[0]?.message || 'Invalid payout update data.' };
+      }
+
+      const updated = ctx.doctorCommissionRepo.updateDoctorPayout(parsed.data, currentSession.user.id);
+      ctx.auditRepo.logAction({
+        userId: currentSession.user.id,
+        action: 'DOCTOR_COMMISSION_PAYMENT_UPDATED',
+        entityType: 'DOCTOR',
+        entityId: String(updated.doctorId),
+        details: {
+          payoutId: updated.id,
+          amount: updated.amountPaisa,
+          editReason: parsed.data.editReason,
+        },
+      });
+
+      return { success: true, data: updated };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to update doctor payout.' };
+    }
+  });
+
+  // Export Doctor Commission Statement PDF
+  ipcMain.handle(IPC_CHANNELS.DOCTOR_COMMISSION_EXPORT_PDF, async (_, query: any): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const hospital = ctx.hospitalRepo.getSettings() || currentSession.hospital;
+      const mainWindow = ctx.getMainWindow ? ctx.getMainWindow() : null;
+
+      const dateText = query?.startDate && query?.endDate
+        ? `${query.startDate.slice(0, 10)} to ${query.endDate.slice(0, 10)}`
+        : query?.startDate
+        ? `From ${query.startDate.slice(0, 10)}`
+        : query?.endDate
+        ? `Up to ${query.endDate.slice(0, 10)}`
+        : 'All time / Lifetime';
+
+      if (query?.doctorId) {
+        const summary = ctx.doctorCommissionRepo.getDoctorSummary(query.doctorId, query);
+        if (!summary) return { success: false, error: 'Doctor not found.' };
+
+        const visits = ctx.doctorCommissionRepo.getDoctorReferredVisits(query.doctorId, query);
+        const payouts = ctx.doctorCommissionRepo.listDoctorPayouts({ doctorId: query.doctorId, startDate: query.startDate, endDate: query.endDate });
+
+        const res = await PdfService.exportDoctorCommissionStatementPdf(summary, visits, payouts, hospital, dateText, mainWindow);
+        return { success: res.success, data: { success: res.success, filePath: res.filePath }, error: res.error, cancelled: res.cancelled };
+      } else {
+        const overview = ctx.doctorCommissionRepo.getCommissionOverview(query || {});
+        const payouts = ctx.doctorCommissionRepo.listDoctorPayouts(query || {});
+        const res = await PdfService.exportAllDoctorsCommissionOverviewPdf(overview, payouts, hospital, dateText, mainWindow);
+        return { success: res.success, data: { success: res.success, filePath: res.filePath }, error: res.error, cancelled: res.cancelled };
+      }
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to export doctor statement PDF.' };
+    }
+  });
+
+  // Print Doctor Commission Statement
+  ipcMain.handle(IPC_CHANNELS.DOCTOR_COMMISSION_PRINT, async (_, query: any): Promise<IpcResponse<any>> => {
+    try {
+      if (!currentSession) return { success: false, error: 'Unauthorized.' };
+      const hospital = ctx.hospitalRepo.getSettings() || currentSession.hospital;
+
+      const dateText = query?.startDate && query?.endDate
+        ? `${query.startDate.slice(0, 10)} to ${query.endDate.slice(0, 10)}`
+        : query?.startDate
+        ? `From ${query.startDate.slice(0, 10)}`
+        : query?.endDate
+        ? `Up to ${query.endDate.slice(0, 10)}`
+        : 'All time / Lifetime';
+
+      if (query?.doctorId) {
+        const summary = ctx.doctorCommissionRepo.getDoctorSummary(query.doctorId, query);
+        if (!summary) return { success: false, error: 'Doctor not found.' };
+
+        const visits = ctx.doctorCommissionRepo.getDoctorReferredVisits(query.doctorId, query);
+        const payouts = ctx.doctorCommissionRepo.listDoctorPayouts({ doctorId: query.doctorId, startDate: query.startDate, endDate: query.endDate });
+
+        const res = await PdfService.printDoctorCommissionStatement(summary, visits, payouts, hospital, dateText);
+        return res;
+      } else {
+        const overview = ctx.doctorCommissionRepo.getCommissionOverview(query || {});
+        const payouts = ctx.doctorCommissionRepo.listDoctorPayouts(query || {});
+        const res = await PdfService.printAllDoctorsCommissionOverview(overview, payouts, hospital, dateText);
+        return res;
+      }
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to print doctor statement.' };
     }
   });
 

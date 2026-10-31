@@ -32,11 +32,11 @@ describe('Integration: Database Migrations Runner', () => {
     const runner = new MigrationRunner(manager, migrationsDir);
 
     const result = runner.runPendingMigrations();
-    expect(result.appliedCount).toBe(11);
-    expect(result.latestVersion).toBe(11);
+    expect(result.appliedCount).toBe(12);
+    expect(result.latestVersion).toBe(12);
 
     const applied = runner.getAppliedMigrations();
-    expect(applied.length).toBe(11);
+    expect(applied.length).toBe(12);
     expect(applied[0].version).toBe(1);
     expect(applied[0].name).toBe('initial_schema');
     expect(applied[1].version).toBe(2);
@@ -55,12 +55,14 @@ describe('Integration: Database Migrations Runner', () => {
     expect(applied[7].name).toBe('report_templates');
     expect(applied[8].version).toBe(9);
     expect(applied[8].name).toBe('assets_and_doctor_commission');
+    expect(applied[11].version).toBe(12);
+    expect(applied[11].name).toBe('doctor_payouts');
     expect(applied[0].checksum).toBeDefined();
 
     // Verify tables exist
     const db = manager.getDatabase();
     const tables = db.prepare(`
-      SELECT name FROM sqlite_master WHERE type='table' AND name IN ('app_users', 'hospital_settings', 'audit_logs', 'visits', 'invoices', 'order_items', 'payments', 'test_results', 'report_snapshots', 'result_amendments', 'report_templates', 'lab_assets', 'owner_payouts');
+      SELECT name FROM sqlite_master WHERE type='table' AND name IN ('app_users', 'hospital_settings', 'audit_logs', 'visits', 'invoices', 'order_items', 'payments', 'test_results', 'report_snapshots', 'result_amendments', 'report_templates', 'lab_assets', 'owner_payouts', 'doctor_commission_payments');
     `).all() as Array<{ name: string }>;
 
     expect(tables.map((t) => t.name)).toContain('app_users');
@@ -76,6 +78,7 @@ describe('Integration: Database Migrations Runner', () => {
     expect(tables.map((t) => t.name)).toContain('report_templates');
     expect(tables.map((t) => t.name)).toContain('lab_assets');
     expect(tables.map((t) => t.name)).toContain('owner_payouts');
+    expect(tables.map((t) => t.name)).toContain('doctor_commission_payments');
 
     manager.close();
   });
@@ -85,11 +88,11 @@ describe('Integration: Database Migrations Runner', () => {
     const runner = new MigrationRunner(manager, migrationsDir);
 
     const run1 = runner.runPendingMigrations();
-    expect(run1.appliedCount).toBe(11);
+    expect(run1.appliedCount).toBe(12);
 
     const run2 = runner.runPendingMigrations();
     expect(run2.appliedCount).toBe(0);
-    expect(run2.latestVersion).toBe(11);
+    expect(run2.latestVersion).toBe(12);
 
     manager.close();
   });

@@ -7,6 +7,12 @@ import type { Doctor, DuplicateDoctorWarning } from '../database/repositories/do
 import type { LabTest } from '../database/repositories/catalog-repository';
 import type { LabAsset, AssetFilterQuery } from '../database/repositories/asset-repository';
 import type { OwnerPayout, MyPercentageSummary, DoctorCommissionBreakdown, FinancialMetrics } from '../database/repositories/finance-repository';
+import type {
+  DoctorCommissionSummary,
+  DoctorReferredVisitItem,
+  DoctorPayoutItem,
+  DoctorCommissionOverview,
+} from '../database/repositories/doctor-commission-repository';
 
 export type {
   SafeUser,
@@ -24,6 +30,10 @@ export type {
   MyPercentageSummary,
   DoctorCommissionBreakdown,
   FinancialMetrics,
+  DoctorCommissionSummary,
+  DoctorReferredVisitItem,
+  DoctorPayoutItem,
+  DoctorCommissionOverview,
 };
 export type {
   ParameterReferenceRange,
@@ -854,6 +864,22 @@ export const RecordDoctorCommissionPaymentSchema = z.object({
 });
 export type RecordDoctorCommissionPaymentInput = z.infer<typeof RecordDoctorCommissionPaymentSchema>;
 
+export const RecordDoctorPayoutSchema = z.object({
+  doctorId: z.number().int().positive('Please select a doctor'),
+  amountPaisa: z.number().int().positive('Payment amount must be greater than zero'),
+  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  paymentMethod: z.enum(['cash', 'bank_transfer', 'cheque', 'other']).default('cash'),
+  reference: z.string().trim().max(100).nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+});
+export type RecordDoctorPayoutInput = z.infer<typeof RecordDoctorPayoutSchema>;
+
+export const UpdateDoctorPayoutSchema = RecordDoctorPayoutSchema.extend({
+  id: z.number().int().positive(),
+  editReason: z.string().trim().min(3, 'Please provide a clear reason explaining why you are modifying this payment record'),
+});
+export type UpdateDoctorPayoutInput = z.infer<typeof UpdateDoctorPayoutSchema>;
+
 export const RecordInvestorCapitalSchema = z.object({
   amountPaisa: z.number().int().positive('Capital amount must be greater than zero'),
   type: z.enum(['capital_contribution', 'capital_return']),
@@ -1171,6 +1197,16 @@ export interface ElectronAPI {
     updateTransaction: (input: { id: number; paymentDate: string; amountPaisa: number; partner?: 'technician' | 'investor'; type?: string; method?: string; reference?: string; notes?: string; editReason?: string }) => Promise<IpcResponse<boolean>>;
     deleteTransaction: (id: number) => Promise<IpcResponse<boolean>>;
     clearTechnicianPayouts: () => Promise<IpcResponse<{ deletedCount: number }>>;
+  };
+  doctorCommission: {
+    getOverview: (query?: { startDate?: string; endDate?: string }) => Promise<IpcResponse<DoctorCommissionOverview>>;
+    getSummary: (doctorId: number, query?: { startDate?: string; endDate?: string }) => Promise<IpcResponse<DoctorCommissionSummary | null>>;
+    getVisits: (doctorId: number, query?: { startDate?: string; endDate?: string; search?: string }) => Promise<IpcResponse<DoctorReferredVisitItem[]>>;
+    listPayouts: (query?: { doctorId?: number; startDate?: string; endDate?: string }) => Promise<IpcResponse<DoctorPayoutItem[]>>;
+    recordPayout: (input: RecordDoctorPayoutInput) => Promise<IpcResponse<DoctorPayoutItem>>;
+    updatePayout: (input: UpdateDoctorPayoutInput) => Promise<IpcResponse<DoctorPayoutItem>>;
+    exportPdf: (query: { doctorId: number; startDate?: string; endDate?: string }) => Promise<IpcResponse<{ success: boolean; filePath?: string; cancelled?: boolean; error?: string }>>;
+    print: (query: { doctorId: number; startDate?: string; endDate?: string }) => Promise<IpcResponse<{ success: boolean; cancelled?: boolean; error?: string }>>;
   };
   app: {
     getInfo: () => Promise<IpcResponse<AppInfo>>;

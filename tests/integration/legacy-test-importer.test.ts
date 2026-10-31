@@ -50,6 +50,13 @@ describe('Legacy Test Importer Integration', () => {
     expect(detection.departmentsCount).toBe(13);
   });
 
+  it('automatically discovers candidate backup file when no path is provided', () => {
+    const detection = detectLegacyTestCatalog();
+    expect(detection.detected).toBe(true);
+    expect(detection.filePath).toBeTruthy();
+    expect(detection.testsCount).toBe(249);
+  });
+
   it('imports all 249 tests and parameters into the active database with one call', () => {
     const stats = importLegacyTestsToActiveDatabase(dbManager, legacyBakPath);
 

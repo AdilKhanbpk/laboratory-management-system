@@ -2,6 +2,7 @@ import { BrowserWindow, dialog } from 'electron';
 import fs from 'fs';
 import { FullDiagnosticReport, ReportTemplate, HospitalSettings } from '../types/ipc';
 import { LabAsset } from '../database/repositories/asset-repository';
+import { DoctorCommissionSummary, DoctorReferredVisitItem, DoctorPayoutItem, DoctorCommissionOverview } from '../database/repositories/doctor-commission-repository';
 import { DEFAULT_REPORT_TEMPLATE } from '../database/repositories/template-repository';
 
 function escapeHtml(str: string | null | undefined): string {
@@ -97,10 +98,35 @@ export class PdfService {
             const isLow = flag === 'low';
             const abnormal = isCritical || isHigh || isLow;
 
-            let statusText = 'Normal';
-            if (isCritical) statusText = 'Critical';
-            else if (isHigh) statusText = 'High';
-            else if (isLow) statusText = 'Low';
+            const rawRange = (pr.referenceRangeDisplay || '').trim();
+            const hasNormalRange = Boolean(
+              rawRange &&
+              rawRange !== '—' &&
+              rawRange !== '-' &&
+              rawRange !== '--' &&
+              rawRange.toLowerCase() !== 'reference range not configured' &&
+              rawRange.toLowerCase() !== 'n/a' &&
+              rawRange.toLowerCase() !== 'not configured' &&
+              flag !== 'unconfigured'
+            );
+
+            let statusText = '—';
+            let statusClass = 'none';
+            if (hasNormalRange) {
+              if (isCritical) {
+                statusText = 'Critical';
+                statusClass = 'critical';
+              } else if (isHigh) {
+                statusText = 'High';
+                statusClass = 'high';
+              } else if (isLow) {
+                statusText = 'Low';
+                statusClass = 'low';
+              } else {
+                statusText = 'Normal';
+                statusClass = 'normal';
+              }
+            }
 
             const tds = visibleCols
               .map((col) => {
@@ -117,8 +143,10 @@ export class PdfService {
                   return `<td class="param-range">${escapeHtml(pr.referenceRangeDisplay || '—')}</td>`;
                 }
                 if (col.key === 'status') {
-                  const statusClass = statusText.toLowerCase();
-                  return `<td class="param-status status-${statusClass}">${statusText}</td>`;
+                  if (hasNormalRange) {
+                    return `<td class="param-status status-${statusClass}">${statusText}</td>`;
+                  }
+                  return `<td class="param-status text-slate-400" style="color: #94a3b8;">—</td>`;
                 }
                 return `<td>—</td>`;
               })
@@ -151,7 +179,7 @@ export class PdfService {
       .join('');
 
     const patientGridHtml = template.style.showPatientBox !== false ? `
-      <div class="section-box">
+      <div class="section-box patient-box">
         <div class="section-title">PATIENT DETAILS</div>
         <div class="patient-grid">
           <span>Patient Name: <b>${escapeHtml(patient.full_name)}</b></span>
@@ -166,7 +194,7 @@ export class PdfService {
     ` : '';
 
     const observationsHtml = template.observations?.visible ? `
-      <div class="section-box">
+      <div class="section-box observations-box">
         <div class="section-title">${escapeHtml(template.observations.title || 'COMPUTER TEST RESULTS / OBSERVATIONS')}</div>
         <div class="observations-body">
           ${escapeHtml(template.observations.defaultText || 'Specimen processed on automated clinical pathology analyzers. All calibration and internal quality control values within acceptable limits. Test results to be clinically correlated with patient symptoms.')}
@@ -197,9 +225,11 @@ export class PdfService {
       padding: 0;
     }
     html, body {
-      height: 100%;
       margin: 0;
       padding: 0;
+      background: #ffffff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     body {
       font-family: ${template.style.fontFamily || 'Arial'}, -apple-system, sans-serif;
@@ -227,6 +257,8 @@ export class PdfService {
       display: flex;
       align-items: center;
       gap: 14px;
+      page-break-inside: avoid;
+      break-inside: avoid;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -285,11 +317,22 @@ export class PdfService {
       border-bottom: 1px solid #94a3b8;
       line-height: 1.45;
       color: #334155;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .section-box {
       margin-top: 10px;
       border: 1px solid #94a3b8;
+    }
+    .patient-box, .observations-box {
       page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .results-section {
+      page-break-inside: auto;
+      break-inside: auto;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
     }
     .section-title {
       background: #d6edf3;
@@ -299,6 +342,8 @@ export class PdfService {
       font-weight: 700;
       letter-spacing: 0.5px;
       text-transform: uppercase;
+      page-break-after: avoid;
+      break-after: avoid;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -314,7 +359,8 @@ export class PdfService {
     }
     .test-block {
       margin-top: 8px;
-      page-break-inside: avoid;
+      page-break-inside: auto;
+      break-inside: auto;
     }
     .test-header {
       border-bottom: 1px solid #0f766e;
@@ -323,6 +369,8 @@ export class PdfService {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
+      page-break-after: avoid;
+      break-after: avoid;
     }
     .test-title {
       font-size: 12px;
@@ -337,6 +385,11 @@ export class PdfService {
       width: 100%;
       border-collapse: collapse;
       font-size: 10.5px;
+      page-break-inside: auto;
+      break-inside: auto;
+    }
+    .results-table thead {
+      display: table-header-group;
     }
     .results-table th {
       color: #ffffff;
@@ -352,6 +405,10 @@ export class PdfService {
       border: 1px solid #cbd5e1;
       padding: 4px 6px;
       font-size: 10.5px;
+    }
+    .results-table tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .param-name {
       font-weight: 600;
@@ -442,7 +499,7 @@ export class PdfService {
       ${patientGridHtml}
 
       <!-- Test Results -->
-      <div class="section-box" style="margin-top: 10px;">
+      <div class="section-box results-section" style="margin-top: 10px;">
         <div class="section-title">LAB TEST RESULTS</div>
         <div style="padding: 6px 8px;">
           ${testsHtml}
@@ -1179,5 +1236,632 @@ export class PdfService {
       console.error('Partnership statement PDF error:', err);
       return { success: false, error: err?.message || 'Failed to export statement PDF.' };
     }
+  }
+
+  /**
+   * Generates clean, professional HTML for Doctor Commission & Settlement Statement.
+   */
+  public static generateDoctorCommissionStatementHtml(
+    summary: DoctorCommissionSummary,
+    visits: DoctorReferredVisitItem[],
+    payouts: DoctorPayoutItem[],
+    hospital: HospitalSettings,
+    dateRangeText: string
+  ): string {
+    const fmt = (paisa?: number) => {
+      const val = (paisa || 0) / 100;
+      return `Rs. ${val.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    };
+
+    const logoHtml = hospital.logo_url
+      ? `<img src="${hospital.logo_url}" alt="Hospital Logo" style="max-height: 60px; max-width: 160px; object-fit: contain;" />`
+      : '';
+
+    const remainingBal = summary.remainingBalancePaisa;
+    const balanceColor = remainingBal > 0 ? '#b45309' : remainingBal < 0 ? '#047857' : '#1e293b';
+    const balanceBg = remainingBal > 0 ? '#fffbeb' : remainingBal < 0 ? '#ecfdf5' : '#f8fafc';
+    const balanceBorder = remainingBal > 0 ? '#fde68a' : remainingBal < 0 ? '#a7f3d0' : '#e2e8f0';
+
+    const visitsRows = visits.length === 0
+      ? `<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 16px;">No patient visits recorded in this period.</td></tr>`
+      : visits.map((v) => `
+        <tr>
+          <td>${v.orderDate ? v.orderDate.slice(0, 10) : '—'}</td>
+          <td><strong>${escapeHtml(v.visitNumber)}</strong></td>
+          <td>
+            <div style="font-weight: 600;">${escapeHtml(v.patientName)}</div>
+            <div style="font-size: 11px; color: #64748b;">${escapeHtml(v.patientMrn)} · ${escapeHtml(v.patientGender)}</div>
+          </td>
+          <td style="font-size: 11px; color: #334155;">${escapeHtml(v.testNames || '—')}</td>
+          <td class="num">${fmt(v.netTotalPaisa)}</td>
+          <td class="num" style="color: #64748b;">${v.doctorPercentage}%</td>
+          <td class="num" style="font-weight: 600; color: #0f766e;">${fmt(v.commissionPaisa)}</td>
+        </tr>
+      `).join('');
+
+    const payoutsRows = payouts.length === 0
+      ? `<tr><td colspan="5" style="text-align: center; color: #64748b; padding: 12px;">No payment settlements recorded in this period.</td></tr>`
+      : payouts.map((p) => `
+        <tr>
+          <td>${p.paymentDate}</td>
+          <td style="font-weight: bold; color: #047857;" class="num">${fmt(p.amountPaisa)}</td>
+          <td style="text-transform: capitalize;">${escapeHtml(p.paymentMethod)}</td>
+          <td>${escapeHtml(p.reference || '—')}</td>
+          <td style="font-size: 11px; color: #64748b;">${escapeHtml(p.recordedByName ? `By ${p.recordedByName}` : '')}${p.notes ? ` · ${escapeHtml(p.notes)}` : ''}</td>
+        </tr>
+      `).join('');
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Doctor Commission Statement - ${escapeHtml(summary.doctorName)}</title>
+  <style>
+    @page { size: A4; margin: 12mm 14mm; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #1e293b; font-size: 12px; line-height: 1.45; margin: 0; padding: 0; }
+    .header { border-bottom: 2px solid #0f766e; padding-bottom: 10px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .title { font-size: 18px; font-weight: bold; color: #0f766e; margin: 0 0 3px 0; text-transform: uppercase; letter-spacing: 0.03em; }
+    .subtitle { font-size: 12px; color: #64748b; margin: 0; }
+    .hospital-name { font-size: 15px; font-weight: 700; color: #0f766e; }
+    .hospital-meta { font-size: 11px; color: #64748b; margin-top: 2px; }
+    
+    .meta-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .doc-info { font-size: 13px; font-weight: 700; color: #0f766e; }
+    .doc-sub { font-size: 11px; color: #64748b; margin-top: 2px; }
+    .period-pill { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
+    .kpi-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; text-align: center; }
+    .kpi-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700; }
+    .kpi-value { font-size: 14px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+    .kpi-sub { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+
+    .balance-banner { border-radius: 6px; padding: 10px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+    .balance-label { font-size: 13px; font-weight: 700; }
+    .balance-amount { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+    .sec-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #0f766e; margin: 14px 0 6px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; display: flex; justify-content: space-between; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 11px; }
+    th { background: #f1f5f9; color: #475569; font-weight: 600; text-align: left; padding: 6px 8px; border: 1px solid #cbd5e1; }
+    td { padding: 6px 8px; border: 1px solid #cbd5e1; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .tfoot-row { background: #f8fafc; font-weight: 700; }
+
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 35px; }
+    .sig-line { border-top: 1px solid #94a3b8; padding-top: 6px; text-align: center; font-size: 11px; color: #475569; font-weight: 600; }
+    .footer { margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 8px; font-size: 10px; color: #94a3b8; display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="hospital-name">${escapeHtml(hospital.hospital_name || 'CLINICAL LABORATORY')}</div>
+      <div class="hospital-meta">${escapeHtml(hospital.address || '')}${hospital.phone_primary ? ` · Ph: ${escapeHtml(hospital.phone_primary)}` : ''}</div>
+    </div>
+    <div style="text-align: right;">
+      ${logoHtml}
+    </div>
+  </div>
+
+  <div class="meta-box">
+    <div>
+      <div class="doc-info">${escapeHtml(summary.doctorName)} (${summary.commissionPercentage}% Commission)</div>
+      <div class="doc-sub">${escapeHtml(summary.specialization || 'Consultant Physician')}${summary.clinicHospitalName ? ` · ${escapeHtml(summary.clinicHospitalName)}` : ''}${summary.phoneNumber ? ` · ${escapeHtml(summary.phoneNumber)}` : ''}</div>
+    </div>
+    <div style="text-align: right;">
+      <div class="title" style="font-size: 14px;">Commission Statement</div>
+      <div class="period-pill">${escapeHtml(dateRangeText)}</div>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-title">Referred Visits</div>
+      <div class="kpi-value" style="color: #0f766e;">${summary.totalReferredVisits}</div>
+      <div class="kpi-sub">${summary.totalTestsOrdered} tests ordered</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Gross Patient Bill</div>
+      <div class="kpi-value">${fmt(summary.netRevenuePaisa)}</div>
+      <div class="kpi-sub">Total: ${fmt(summary.grossRevenuePaisa)}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Doctor Commission Share</div>
+      <div class="kpi-value" style="color: #0f766e;">${fmt(summary.totalEarnedCommissionPaisa)}</div>
+      <div class="kpi-sub">At ${summary.commissionPercentage}% rate</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Total Paid</div>
+      <div class="kpi-value" style="color: #047857;">${fmt(summary.totalPaidPaisa)}</div>
+      <div class="kpi-sub">${payouts.length} disbursements</div>
+    </div>
+    <div class="kpi-card" style="border-color: ${balanceBorder}; background: ${balanceBg};">
+      <div class="kpi-title" style="color: ${balanceColor};">Net Balance Due</div>
+      <div class="kpi-value" style="color: ${balanceColor};">${fmt(summary.remainingBalancePaisa)}</div>
+      <div class="kpi-sub" style="color: ${balanceColor};">${remainingBal > 0 ? 'Payable' : 'Settled'}</div>
+    </div>
+  </div>
+
+  <div class="balance-banner" style="background: ${balanceBg}; border: 1.5px solid ${balanceBorder}; color: ${balanceColor};">
+    <div class="balance-label">
+      ${remainingBal > 0
+        ? `Outstanding Commission Balance Payable to ${escapeHtml(summary.doctorName)}:`
+        : remainingBal < 0
+        ? `Doctor Commission Account has Advance Balance:`
+        : `Doctor Commission Account is Fully Settled:`}
+    </div>
+    <div class="balance-amount">${fmt(Math.abs(remainingBal))}</div>
+  </div>
+
+  <div class="sec-title">
+    <span>1. Referred Patient Visits & Commission Breakdown</span>
+    <span style="font-weight: normal; font-size: 11px;">Total Visits: ${visits.length}</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 12%;">Date</th>
+        <th style="width: 14%;">Visit #</th>
+        <th style="width: 25%;">Patient Name & MRN</th>
+        <th style="width: 23%;">Tests Ordered</th>
+        <th style="width: 10%;" class="num">Net Bill</th>
+        <th style="width: 6%;" class="num">Rate</th>
+        <th style="width: 10%;" class="num">Doctor Share</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${visitsRows}
+    </tbody>
+    ${visits.length > 0 ? `
+    <tfoot>
+      <tr class="tfoot-row">
+        <td colspan="4">Subtotal (${visits.length} visits)</td>
+        <td class="num">${fmt(summary.netRevenuePaisa)}</td>
+        <td></td>
+        <td class="num" style="color: #0f766e;">${fmt(summary.totalEarnedCommissionPaisa)}</td>
+      </tr>
+    </tfoot>
+    ` : ''}
+  </table>
+
+  <div class="sec-title">
+    <span>2. Settlement Payments & Disbursements Ledger</span>
+    <span style="font-weight: normal; font-size: 11px;">Total Paid: ${fmt(summary.totalPaidPaisa)}</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 16%;">Payment Date</th>
+        <th style="width: 18%;" class="num">Amount Paid</th>
+        <th style="width: 18%;">Payment Method</th>
+        <th style="width: 20%;">Receipt / Ref #</th>
+        <th style="width: 28%;">Recorded By & Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${payoutsRows}
+    </tbody>
+    ${payouts.length > 0 ? `
+    <tfoot>
+      <tr class="tfoot-row">
+        <td>Total Paid</td>
+        <td class="num" style="color: #047857;">${fmt(summary.totalPaidPaisa)}</td>
+        <td colspan="3"></td>
+      </tr>
+    </tfoot>
+    ` : ''}
+  </table>
+
+  <div class="signatures">
+    <div class="sig-line">Prepared By (Laboratory Accountant / Manager)</div>
+    <div class="sig-line">Doctor Acknowledgment Signature</div>
+  </div>
+
+  <div class="footer">
+    <span>Generated by Clinical Laboratory Management System on ${new Date().toISOString().slice(0, 16).replace('T', ' ')}</span>
+    <span>Official Financial Statement</span>
+  </div>
+</body>
+</html>`;
+  }
+
+  /**
+   * Exports Doctor Commission Statement to an A4 PDF document.
+   */
+  public static async exportDoctorCommissionStatementPdf(
+    summary: DoctorCommissionSummary,
+    visits: DoctorReferredVisitItem[],
+    payouts: DoctorPayoutItem[],
+    hospital: HospitalSettings,
+    dateRangeText: string,
+    mainWindow?: BrowserWindow | null
+  ): Promise<{ success: boolean; filePath?: string; cancelled?: boolean; error?: string }> {
+    try {
+      const now = new Date().toISOString().split('T')[0];
+      const sanitizedName = summary.doctorName.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const defaultFilename = `Doctor_Statement_${sanitizedName}_${now}.pdf`;
+
+      const { filePath, canceled } = await dialog.showSaveDialog(mainWindow || (undefined as any), {
+        title: `Save Commission Statement for ${summary.doctorName}`,
+        defaultPath: defaultFilename,
+        filters: [{ name: 'PDF Documents', extensions: ['pdf'] }],
+      });
+
+      if (canceled || !filePath) {
+        return { success: false, cancelled: true };
+      }
+
+      const html = this.generateDoctorCommissionStatementHtml(summary, visits, payouts, hospital, dateRangeText);
+
+      const printWindow = new BrowserWindow({
+        show: false,
+        width: 800,
+        height: 1100,
+        webPreferences: {
+          offscreen: true,
+        },
+      });
+
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const pdfBuffer = await printWindow.webContents.printToPDF({
+        pageSize: 'A4',
+        printBackground: true,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        preferCSSPageSize: true,
+      });
+
+      printWindow.destroy();
+
+      await fs.promises.writeFile(filePath, pdfBuffer);
+
+      return { success: true, filePath };
+    } catch (err: any) {
+      console.error('Doctor statement PDF export error:', err);
+      return { success: false, error: err?.message || 'Failed to export doctor statement PDF.' };
+    }
+  }
+
+  /**
+   * Prints Doctor Commission Statement directly using native print dialog.
+   */
+  public static async printDoctorCommissionStatement(
+    summary: DoctorCommissionSummary,
+    visits: DoctorReferredVisitItem[],
+    payouts: DoctorPayoutItem[],
+    hospital: HospitalSettings,
+    dateRangeText: string
+  ): Promise<{ success: boolean; cancelled?: boolean; error?: string }> {
+    return new Promise(async (resolve) => {
+      let printWindow: BrowserWindow | null = null;
+      try {
+        const html = this.generateDoctorCommissionStatementHtml(summary, visits, payouts, hospital, dateRangeText);
+
+        printWindow = new BrowserWindow({
+          show: false,
+          width: 800,
+          height: 1100,
+          webPreferences: {
+            offscreen: true,
+          },
+        });
+
+        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+        await new Promise((r) => setTimeout(r, 350));
+
+        printWindow.webContents.print(
+          {
+            silent: false,
+            printBackground: true,
+            color: true,
+          },
+          (success, failureReason) => {
+            if (printWindow && !printWindow.isDestroyed()) {
+              printWindow.destroy();
+            }
+            if (!success) {
+              if (failureReason === 'cancelled' || failureReason === 'Print job canceled') {
+                resolve({ success: false, cancelled: true });
+              } else {
+                resolve({ success: false, error: failureReason || 'Print failed.' });
+              }
+            } else {
+              resolve({ success: true });
+            }
+          }
+        );
+      } catch (err: any) {
+        if (printWindow && !printWindow.isDestroyed()) {
+          printWindow.destroy();
+        }
+        console.error('Print doctor statement error:', err);
+        resolve({ success: false, error: err?.message || 'Failed to print doctor statement.' });
+      }
+    });
+  }
+
+  /**
+   * Generates HTML statement for All Referring Doctors Commission Overview.
+   */
+  public static generateAllDoctorsCommissionOverviewHtml(
+    overview: DoctorCommissionOverview,
+    payouts: DoctorPayoutItem[],
+    hospital: HospitalSettings,
+    dateRangeText: string
+  ): string {
+    const fmt = (paisa?: number | null) => {
+      const val = (paisa || 0) / 100;
+      return `Rs. ${val.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    };
+
+    const ov = overview.overall;
+    const balanceColor = ov.remainingBalancePaisa > 0 ? '#b91c1c' : '#047857';
+
+    const doctorRows = overview.doctors.map((d, idx) => `
+      <tr>
+        <td style="text-align: center; color: #64748b;">${idx + 1}</td>
+        <td>
+          <strong>${escapeHtml(d.doctorName)}</strong>
+          ${d.specialization ? `<div style="font-size: 10px; color: #64748b;">${escapeHtml(d.specialization)}</div>` : ''}
+        </td>
+        <td class="num"><span style="display: inline-block; padding: 1px 5px; border-radius: 4px; background: #f0fdfa; border: 1px solid #ccfbf1; font-weight: 600; color: #0f766e;">${d.commissionPercentage}%</span></td>
+        <td class="num">${d.referredVisits}</td>
+        <td class="num">${fmt(d.netSalesPaisa)}</td>
+        <td class="num" style="color: #0f766e; font-weight: 600;">${fmt(d.commissionPaisa)}</td>
+        <td class="num">${fmt(d.paidPaisa)}</td>
+        <td class="num" style="font-weight: 600; color: ${d.balancePaisa > 0 ? '#b91c1c' : '#047857'};">
+          ${d.balancePaisa > 0 ? fmt(d.balancePaisa) : 'Settled'}
+        </td>
+      </tr>
+    `).join('');
+
+    const recentPayoutRows = payouts.slice(0, 15).map((p) => `
+      <tr>
+        <td>${p.paymentDate.slice(0, 10)}</td>
+        <td><strong>${escapeHtml(p.doctorName || `Doctor #${p.doctorId}`)}</strong></td>
+        <td class="num" style="font-weight: 600;">${fmt(p.amountPaisa)}</td>
+        <td style="text-transform: capitalize;">${escapeHtml(p.paymentMethod.replace('_', ' '))}</td>
+        <td>${escapeHtml(p.reference || '—')}</td>
+        <td style="color: #64748b;">${escapeHtml(p.recordedByName || 'System')}</td>
+      </tr>
+    `).join('');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Doctors Commission Overview</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm 12mm 12mm 12mm; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 11px; line-height: 1.4; color: #1e293b; margin: 0; padding: 0; }
+    .header-table { width: 100%; border-bottom: 2px solid #0f766e; padding-bottom: 8px; margin-bottom: 12px; }
+    .lab-title { font-size: 18px; font-weight: 800; color: #0f766e; margin: 0 0 3px 0; }
+    .lab-sub { font-size: 10px; color: #64748b; }
+    .doc-badge { text-align: right; }
+    .doc-title { font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 3px; }
+    .kpi-grid { display: flex; gap: 8px; margin-bottom: 14px; }
+    .kpi-card { flex: 1; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; background: #f8fafc; }
+    .kpi-title { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; color: #64748b; margin-bottom: 3px; }
+    .kpi-value { font-size: 14px; font-weight: 800; color: #0f172a; }
+    .kpi-sub { font-size: 9px; color: #64748b; margin-top: 1px; }
+    .sec-title { font-size: 12px; font-weight: 700; color: #0f766e; margin: 12px 0 6px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 12px; }
+    th { background: #f1f5f9; color: #334155; font-weight: 700; text-align: left; padding: 5px 6px; border: 1px solid #cbd5e1; }
+    td { padding: 4px 6px; border: 1px solid #e2e8f0; vertical-align: top; }
+    .num { text-align: right; }
+    .tfoot-row td { font-weight: 700; background: #f8fafc; border-top: 2px solid #cbd5e1; }
+    .footer { margin-top: 16px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #64748b; display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+  <table class="header-table">
+    <tr>
+      <td>
+        <h1 class="lab-title">${escapeHtml(hospital.hospital_name || 'AL-SHIFA MEDICAL CENTER')}</h1>
+        <div class="lab-sub">${escapeHtml(hospital.address || '')} · Tel: ${escapeHtml(hospital.phone_primary || '')}</div>
+      </td>
+      <td class="doc-badge">
+        <div class="doc-title">Doctors Commission Summary Report</div>
+        <div class="lab-sub">Period: ${escapeHtml(dateRangeText)}</div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-title">Active Doctors</div>
+      <div class="kpi-value">${ov.totalDoctors}</div>
+      <div class="kpi-sub">${ov.totalReferredVisits} referred visits</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Invoiced Billed Total</div>
+      <div class="kpi-value">${fmt(ov.netRevenuePaisa)}</div>
+      <div class="kpi-sub">${ov.totalTestsOrdered} tests ordered</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Earned Commission</div>
+      <div class="kpi-value" style="color: #0f766e;">${fmt(ov.totalEarnedCommissionPaisa)}</div>
+      <div class="kpi-sub">Total doctors share</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Total Paid</div>
+      <div class="kpi-value" style="color: #047857;">${fmt(ov.totalPaidPaisa)}</div>
+      <div class="kpi-sub">Disbursed payouts</div>
+    </div>
+    <div class="kpi-card" style="border-color: ${ov.remainingBalancePaisa > 0 ? '#fecaca' : '#a7f3d0'}; background: ${ov.remainingBalancePaisa > 0 ? '#fef2f2' : '#ecfdf5'};">
+      <div class="kpi-title" style="color: ${balanceColor};">Remaining Balance</div>
+      <div class="kpi-value" style="color: ${balanceColor};">${fmt(ov.remainingBalancePaisa)}</div>
+      <div class="kpi-sub" style="color: ${balanceColor};">${ov.remainingBalancePaisa > 0 ? 'Outstanding payable' : 'Fully settled'}</div>
+    </div>
+  </div>
+
+  <div class="sec-title">Referring Doctors Commission Breakdown</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 5%; text-align: center;">#</th>
+        <th style="width: 25%;">Doctor Name</th>
+        <th style="width: 8%;" class="num">Rate</th>
+        <th style="width: 8%;" class="num">Visits</th>
+        <th style="width: 15%;" class="num">Invoiced Bill</th>
+        <th style="width: 15%;" class="num">Earned Commission</th>
+        <th style="width: 12%;" class="num">Total Paid</th>
+        <th style="width: 12%;" class="num">Balance Due</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${doctorRows}
+    </tbody>
+    <tfoot>
+      <tr class="tfoot-row">
+        <td colspan="3">Totals (${overview.doctors.length} Doctors)</td>
+        <td class="num">${ov.totalReferredVisits}</td>
+        <td class="num">${fmt(ov.netRevenuePaisa)}</td>
+        <td class="num" style="color: #0f766e;">${fmt(ov.totalEarnedCommissionPaisa)}</td>
+        <td class="num">${fmt(ov.totalPaidPaisa)}</td>
+        <td class="num" style="color: ${balanceColor};">${fmt(ov.remainingBalancePaisa)}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  ${payouts.length > 0 ? `
+  <div class="sec-title">Recent Settlement Payments &amp; Disbursements</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 15%;">Date</th>
+        <th style="width: 25%;">Doctor</th>
+        <th style="width: 15%;" class="num">Amount Paid</th>
+        <th style="width: 15%;">Method</th>
+        <th style="width: 15%;">Reference</th>
+        <th style="width: 15%;">Recorded By</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${recentPayoutRows}
+    </tbody>
+  </table>
+  ` : ''}
+
+  <div class="footer">
+    <span>Generated by Clinical Laboratory Management System on ${new Date().toISOString().slice(0, 16).replace('T', ' ')}</span>
+    <span>Official Commission Summary</span>
+  </div>
+</body>
+</html>`;
+  }
+
+  /**
+   * Exports All Doctors Commission Overview to an A4 PDF document.
+   */
+  public static async exportAllDoctorsCommissionOverviewPdf(
+    overview: DoctorCommissionOverview,
+    payouts: DoctorPayoutItem[],
+    hospital: HospitalSettings,
+    dateRangeText: string,
+    mainWindow?: BrowserWindow | null
+  ): Promise<{ success: boolean; filePath?: string; cancelled?: boolean; error?: string }> {
+    try {
+      const now = new Date().toISOString().split('T')[0];
+      const defaultFilename = `Doctors_Commission_Summary_${now}.pdf`;
+
+      const { filePath, canceled } = await dialog.showSaveDialog(mainWindow || (undefined as any), {
+        title: 'Save Doctors Commission Summary Statement',
+        defaultPath: defaultFilename,
+        filters: [{ name: 'PDF Documents', extensions: ['pdf'] }],
+      });
+
+      if (canceled || !filePath) {
+        return { success: false, cancelled: true };
+      }
+
+      const html = this.generateAllDoctorsCommissionOverviewHtml(overview, payouts, hospital, dateRangeText);
+
+      const printWindow = new BrowserWindow({
+        show: false,
+        width: 800,
+        height: 1100,
+        webPreferences: {
+          offscreen: true,
+        },
+      });
+
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const pdfBuffer = await printWindow.webContents.printToPDF({
+        pageSize: 'A4',
+        printBackground: true,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        preferCSSPageSize: true,
+      });
+
+      printWindow.destroy();
+
+      await fs.promises.writeFile(filePath, pdfBuffer);
+
+      return { success: true, filePath };
+    } catch (err: any) {
+      console.error('All doctors commission summary PDF export error:', err);
+      return { success: false, error: err?.message || 'Failed to export doctors commission summary PDF.' };
+    }
+  }
+
+  /**
+   * Prints All Doctors Commission Overview directly.
+   */
+  public static async printAllDoctorsCommissionOverview(
+    overview: DoctorCommissionOverview,
+    payouts: DoctorPayoutItem[],
+    hospital: HospitalSettings,
+    dateRangeText: string
+  ): Promise<{ success: boolean; cancelled?: boolean; error?: string }> {
+    return new Promise(async (resolve) => {
+      let printWindow: BrowserWindow | null = null;
+      try {
+        const html = this.generateAllDoctorsCommissionOverviewHtml(overview, payouts, hospital, dateRangeText);
+
+        printWindow = new BrowserWindow({
+          show: false,
+          width: 800,
+          height: 1100,
+          webPreferences: {
+            offscreen: true,
+          },
+        });
+
+        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        printWindow.webContents.print(
+          {
+            silent: false,
+            printBackground: true,
+            color: true,
+          },
+          (success, failureReason) => {
+            if (printWindow && !printWindow.isDestroyed()) {
+              printWindow.destroy();
+            }
+            if (!success) {
+              if (failureReason === 'cancelled' || failureReason === 'Print job canceled') {
+                resolve({ success: false, cancelled: true });
+              } else {
+                resolve({ success: false, error: failureReason || 'Print failed.' });
+              }
+            } else {
+              resolve({ success: true });
+            }
+          }
+        );
+      } catch (err: any) {
+        if (printWindow && !printWindow.isDestroyed()) {
+          printWindow.destroy();
+        }
+        console.error('Print all doctors summary error:', err);
+        resolve({ success: false, error: err?.message || 'Failed to print doctors commission summary.' });
+      }
+    });
   }
 }

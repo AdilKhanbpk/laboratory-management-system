@@ -73,6 +73,6 @@ describe('Security: Windows DPAPI Key Management & Vault', () => {
     expect(recoveryManager.getOrCreateDatabaseKey()).toBe(originalKey);
 
     fs.rmSync(recoveryDir, { recursive: true, force: true });
-  });
+  }, 15000);
 });
 

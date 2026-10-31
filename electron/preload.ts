@@ -162,6 +162,16 @@ const CHANNELS = {
   TEMPLATES_PRINT_TEST: 'templates:print-test',
   TEMPLATES_EXPORT_PDF_TEST: 'templates:export-pdf-test',
 
+  // Doctor Commission & Settlements
+  DOCTOR_COMMISSION_GET_OVERVIEW: 'doctor-commission:get-overview',
+  DOCTOR_COMMISSION_GET_SUMMARY: 'doctor-commission:get-summary',
+  DOCTOR_COMMISSION_GET_VISITS: 'doctor-commission:get-visits',
+  DOCTOR_PAYOUTS_LIST: 'doctor-commission:list-payouts',
+  DOCTOR_PAYOUTS_RECORD: 'doctor-commission:record-payout',
+  DOCTOR_PAYOUTS_UPDATE: 'doctor-commission:update-payout',
+  DOCTOR_COMMISSION_EXPORT_PDF: 'doctor-commission:export-pdf',
+  DOCTOR_COMMISSION_PRINT: 'doctor-commission:print',
+
   // System & App
   APP_GET_INFO: 'app:get-info',
   APP_CHECK_INTEGRITY: 'app:check-integrity',
@@ -326,6 +336,16 @@ const api: ElectronAPI = {
     updateTransaction: (input: any) => ipcRenderer.invoke(CHANNELS.PARTNERSHIP_UPDATE_TRANSACTION, input),
     deleteTransaction: (id: number) => ipcRenderer.invoke(CHANNELS.PARTNERSHIP_DELETE_TRANSACTION, id),
     clearTechnicianPayouts: () => ipcRenderer.invoke(CHANNELS.PARTNERSHIP_CLEAR_PAYOUTS),
+  },
+  doctorCommission: {
+    getOverview: (query?: any) => ipcRenderer.invoke(CHANNELS.DOCTOR_COMMISSION_GET_OVERVIEW, query),
+    getSummary: (doctorId: number, query?: any) => ipcRenderer.invoke(CHANNELS.DOCTOR_COMMISSION_GET_SUMMARY, { doctorId, query }),
+    getVisits: (doctorId: number, query?: any) => ipcRenderer.invoke(CHANNELS.DOCTOR_COMMISSION_GET_VISITS, { doctorId, query }),
+    listPayouts: (query?: any) => ipcRenderer.invoke(CHANNELS.DOCTOR_PAYOUTS_LIST, query),
+    recordPayout: (input: any) => ipcRenderer.invoke(CHANNELS.DOCTOR_PAYOUTS_RECORD, input),
+    updatePayout: (input: any) => ipcRenderer.invoke(CHANNELS.DOCTOR_PAYOUTS_UPDATE, input),
+    exportPdf: (query?: any) => ipcRenderer.invoke(CHANNELS.DOCTOR_COMMISSION_EXPORT_PDF, query),
+    print: (query?: any) => ipcRenderer.invoke(CHANNELS.DOCTOR_COMMISSION_PRINT, query),
   },
   app: {
     getInfo: () => ipcRenderer.invoke(CHANNELS.APP_GET_INFO),

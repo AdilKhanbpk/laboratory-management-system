@@ -17,6 +17,7 @@ import { PatientHistoryRepository } from './database/repositories/patient-histor
 import { TemplateRepository } from './database/repositories/template-repository';
 import { AssetRepository } from './database/repositories/asset-repository';
 import { FinanceRepository } from './database/repositories/finance-repository';
+import { DoctorCommissionRepository } from './database/repositories/doctor-commission-repository';
 import { LogoService } from './security/logo-service';
 import { wipeDatabaseAndSeedStandardCatalog } from './database/standard-catalog-seeder';
 import { BackupService } from './services/backup-service';
@@ -66,6 +67,7 @@ function initializeDatabase(): {
   templateRepo: TemplateRepository;
   assetRepo: AssetRepository;
   financeRepo: FinanceRepository;
+  doctorCommissionRepo: DoctorCommissionRepository;
   logoService: LogoService;
   backupService: BackupService;
   restoreService: RestoreService;
@@ -136,6 +138,7 @@ function initializeDatabase(): {
   const templateRepo = new TemplateRepository(manager);
   const assetRepo = new AssetRepository(manager);
   const financeRepo = new FinanceRepository(manager);
+  const doctorCommissionRepo = new DoctorCommissionRepository(manager);
   const logoService = new LogoService(userDataPath);
 
   const backupsDir = path.join(userDataPath, 'backups');
@@ -158,6 +161,7 @@ function initializeDatabase(): {
     templateRepo,
     assetRepo,
     financeRepo,
+    doctorCommissionRepo,
     logoService,
     backupService,
     restoreService,

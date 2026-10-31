@@ -1,4 +1,4 @@
-// import React, { useState, useEffect, useMemo, useCallback } from 'react';
+// import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 // import {
 //   Doctor,
 //   LabTest,
@@ -668,7 +668,7 @@
 //     </div>
 //   );
 // };
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Doctor,
   LabTest,
@@ -761,6 +761,17 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedTests, setSelectedTests] = useState<LabTest[]>([]);
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+
+  // --- Input & navigation refs ---
+  const patientNameInputRef = useRef<HTMLInputElement>(null);
+  const testSearchInputRef = useRef<HTMLInputElement>(null);
+  const resultsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Default focus to Full Name field when visiting this page
+  useEffect(() => {
+    patientNameInputRef.current?.focus();
+  }, []);
 
   // --- Billing ---
   const [discountType, setDiscountType] = useState<'none' | 'fixed' | 'percentage'>('none');
@@ -799,6 +810,12 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
   const handleAddTest = (test: LabTest) => {
     if (selectedTests.some((t) => t.id === test.id)) return;
     setSelectedTests((prev) => [...prev, test]);
+    setTestSearch('');
+    setHighlightedIndex(-1);
+    // After adding test, control immediately returns to test search field
+    setTimeout(() => {
+      testSearchInputRef.current?.focus();
+    }, 0);
   };
 
   const handleRemoveTest = (testId: number) => {
@@ -815,6 +832,57 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
       return matchesSearch && matchesCat && notAlreadySelected;
     });
   }, [tests, testSearch, selectedCategory, selectedTests]);
+
+  // Adjust highlighted index when search query changes
+  useEffect(() => {
+    if (testSearch.trim() !== '') {
+      setHighlightedIndex(filteredAvailableTests.length > 0 ? 0 : -1);
+    } else {
+      setHighlightedIndex(-1);
+    }
+  }, [testSearch, filteredAvailableTests.length]);
+
+  // Keep highlighted item visible within scrolling list container
+  useEffect(() => {
+    if (highlightedIndex >= 0 && resultsContainerRef.current) {
+      const items = resultsContainerRef.current.querySelectorAll('li');
+      if (items[highlightedIndex]) {
+        items[highlightedIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [highlightedIndex]);
+
+  // Keyboard navigation for test search input
+  const handleTestSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (filteredAvailableTests.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => {
+        if (prev < filteredAvailableTests.length - 1) {
+          return prev + 1;
+        }
+        return 0; // Wrap to top
+      });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => {
+        if (prev > 0) {
+          return prev - 1;
+        }
+        return filteredAvailableTests.length - 1; // Wrap to bottom
+      });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const targetIndex = highlightedIndex >= 0 ? highlightedIndex : 0;
+      if (filteredAvailableTests[targetIndex]) {
+        handleAddTest(filteredAvailableTests[targetIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      setTestSearch('');
+      setHighlightedIndex(-1);
+    }
+  };
 
   // --- Financial calculations (preview) ---
   const subtotalPaisa = useMemo(() => {
@@ -853,11 +921,14 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
     setPatientPhone('');
     setSelectedDoctorId(null);
     setSelectedTests([]);
+    setTestSearch('');
+    setHighlightedIndex(-1);
     setDiscountType('none');
     setDiscountValueInput('0');
     setPaidAmountInput('0.00');
     setNotes('');
     setServerError(null);
+    patientNameInputRef.current?.focus();
   }, []);
 
   const handleSaveOrder = async () => {
@@ -976,6 +1047,7 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
                 <Label htmlFor="patientName" required>Full name</Label>
                 <input
                   id="patientName"
+                  ref={patientNameInputRef}
                   className={inputClass}
                   value={patientName}
                   onChange={(e) => setPatientName(e.target.value)}
@@ -1086,10 +1158,12 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
               <div className="relative sm:col-span-3">
                 <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#94A3B8]" aria-hidden="true" />
                 <input
+                  ref={testSearchInputRef}
                   type="text"
                   aria-label="Search tests by name or code"
                   value={testSearch}
                   onChange={(e) => setTestSearch(e.target.value)}
+                  onKeyDown={handleTestSearchKeyDown}
                   placeholder="Search by name or code"
                   className={`${inputClass} pl-9`}
                 />
@@ -1110,28 +1184,50 @@ export const NewVisitView: React.FC<NewVisitViewProps> = ({
             </div>
 
             {/* Catalog results */}
-            <div className="mt-3 max-h-64 overflow-y-auto border border-[#E2E8F0] rounded-md">
+            <div
+              ref={resultsContainerRef}
+              className="mt-3 max-h-64 overflow-y-auto border border-[#E2E8F0] rounded-md"
+            >
               {filteredAvailableTests.length > 0 ? (
                 <ul className="divide-y divide-[#E2E8F0]">
-                  {filteredAvailableTests.map((t) => (
-                    <li key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#F8FAFC]">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-medium truncate">{t.test_name}</p>
-                        <p className="text-xs text-[#64748B] truncate">
-                          {t.test_code}, {t.category}
-                        </p>
-                      </div>
-                      <span className="text-[13px] tabular-nums shrink-0">{formatCurrency(t.price_paisa)}</span>
-                      <button
-                        type="button"
+                  {filteredAvailableTests.map((t, idx) => {
+                    const isHighlighted = highlightedIndex === idx;
+                    return (
+                      <li
+                        key={t.id}
                         onClick={() => handleAddTest(t)}
-                        aria-label={`Add ${t.test_name}`}
-                        className="shrink-0 h-7 px-3 rounded-md border border-[#CBD5E1] text-xs font-medium text-[#0F766E] hover:bg-[#F0FDFA] hover:border-[#0F766E] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                        onMouseEnter={() => setHighlightedIndex(idx)}
+                        className={`flex items-center gap-3 px-4 py-2.5 transition-colors cursor-pointer ${
+                          isHighlighted
+                            ? 'bg-teal-50 border-l-4 border-l-[#0F766E] text-teal-950 font-medium'
+                            : 'hover:bg-[#F8FAFC]'
+                        }`}
                       >
-                        Add
-                      </button>
-                    </li>
-                  ))}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-medium truncate">{t.test_name}</p>
+                          <p className="text-xs text-[#64748B] truncate">
+                            {t.test_code}, {t.category}
+                          </p>
+                        </div>
+                        <span className="text-[13px] tabular-nums shrink-0">{formatCurrency(t.price_paisa)}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAddTest(t);
+                          }}
+                          aria-label={`Add ${t.test_name}`}
+                          className={`shrink-0 h-7 px-3 rounded-md text-xs font-medium transition-colors ${
+                            isHighlighted
+                              ? 'bg-[#0F766E] text-white border border-[#0F766E] shadow-xs'
+                              : 'border border-[#CBD5E1] text-[#0F766E] hover:bg-[#F0FDFA] hover:border-[#0F766E]'
+                          } focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]`}
+                        >
+                          Add
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p className="px-4 py-6 text-[13px] text-[#64748B] text-center">

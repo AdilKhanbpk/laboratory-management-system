@@ -298,7 +298,7 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
               {/* Main Report Body Padding */}
               <div className="p-5 pt-3 space-y-4">
                 {/* Patient and visit details box */}
-                <section className="border border-slate-400 rounded-xs overflow-hidden">
+                <section className="border border-slate-400 rounded-xs overflow-hidden print:break-inside-avoid">
                   <div className="bg-[#d6edf3] px-3 py-1 text-[11px] font-bold text-[#0f3e74] uppercase tracking-wider print:[-webkit-print-color-adjust:exact]">
                     Patient Details
                   </div>
@@ -331,11 +331,11 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                 </section>
 
                 {/* Lab Test Results */}
-                <section className="border border-slate-400 rounded-xs overflow-hidden">
-                  <div className="bg-[#d6edf3] px-3 py-1 text-[11px] font-bold text-[#0f3e74] uppercase tracking-wider print:[-webkit-print-color-adjust:exact]">
+                <section className="border border-slate-400 rounded-xs overflow-hidden print:overflow-visible print:break-inside-auto print:box-decoration-clone">
+                  <div className="bg-[#d6edf3] px-3 py-1 text-[11px] font-bold text-[#0f3e74] uppercase tracking-wider print:break-after-avoid print:[-webkit-print-color-adjust:exact]">
                     Lab Test Results
                   </div>
-                  <div className="p-2 space-y-4">
+                  <div className="p-2 space-y-4 print:space-y-3">
                     {reportData.tests.map((testEntry) => {
                       const filledResults = testEntry.results.filter(
                         (pr) => pr.result && pr.result.result_value != null && pr.result.result_value.trim() !== ''
@@ -351,8 +351,8 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                       ];
 
                       return (
-                        <div key={testEntry.orderItem.id} className="space-y-1">
-                          <div className="flex items-baseline justify-between border-b border-[#0f766e] pb-0.5">
+                        <div key={testEntry.orderItem.id} className="space-y-1 print:break-inside-auto">
+                          <div className="flex items-baseline justify-between border-b border-[#0f766e] pb-0.5 print:break-after-avoid">
                             <h2 className="text-[13px] font-bold text-slate-900">
                               {testEntry.orderItem.test_name_snapshot}
                             </h2>
@@ -361,8 +361,8 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                             </span>
                           </div>
 
-                          <table className="w-full border-collapse text-left text-[11px]">
-                            <thead>
+                          <table className="w-full border-collapse text-left text-[11px] print:break-inside-auto">
+                            <thead className="print:table-header-group">
                               <tr
                                 className="text-white print:[-webkit-print-color-adjust:exact]"
                                 style={{ background: reportData.template?.header.accentColor || '#079b98' }}
@@ -387,10 +387,37 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                                 const isLow = flag === 'low';
                                 const abnormal = isCritical || isHigh || isLow;
 
-                                let statusText = 'Normal';
-                                if (isCritical) statusText = 'Critical';
-                                else if (isHigh) statusText = 'High';
-                                else if (isLow) statusText = 'Low';
+                                const rawRange = (pr.referenceRangeDisplay || '').trim();
+                                const hasNormalRange = Boolean(
+                                  rawRange &&
+                                  rawRange !== '—' &&
+                                  rawRange !== '-' &&
+                                  rawRange !== '--' &&
+                                  rawRange.toLowerCase() !== 'reference range not configured' &&
+                                  rawRange.toLowerCase() !== 'n/a' &&
+                                  rawRange.toLowerCase() !== 'not configured' &&
+                                  flag !== 'unconfigured'
+                                );
+
+                                let statusText = '—';
+                                let statusColor = 'text-slate-400 font-normal';
+                                let badgeCls = '';
+                                if (hasNormalRange) {
+                                  if (isCritical) {
+                                    statusText = 'Critical';
+                                    statusColor = 'text-red-700 font-extrabold';
+                                    badgeCls = 'bg-red-50 border border-red-200 px-1.5 py-0.5 rounded inline-block';
+                                  } else if (isHigh) {
+                                    statusText = 'High';
+                                    statusColor = 'text-amber-700 font-bold';
+                                  } else if (isLow) {
+                                    statusText = 'Low';
+                                    statusColor = 'text-blue-700 font-bold';
+                                  } else {
+                                    statusText = 'Normal';
+                                    statusColor = 'text-emerald-700 font-bold';
+                                  }
+                                }
 
                                 return (
                                   <tr key={pr.parameter.id} className="hover:bg-slate-50/50 print:break-inside-avoid">
@@ -424,22 +451,18 @@ export const LabReportPreviewModal: React.FC<LabReportPreviewModalProps> = ({
                                         );
                                       }
                                       if (col.key === 'status') {
-                                        let statusColor = 'text-emerald-700 font-bold';
-                                        let badgeCls = '';
-                                        if (isCritical) {
-                                          statusColor = 'text-red-700 font-extrabold';
-                                          badgeCls = 'bg-red-50 border border-red-200 px-1.5 py-0.5 rounded inline-block';
-                                        } else if (isHigh) {
-                                          statusColor = 'text-amber-700 font-bold';
-                                        } else if (isLow) {
-                                          statusColor = 'text-blue-700 font-bold';
+                                        if (hasNormalRange) {
+                                          return (
+                                            <td key={col.key} className="py-1.5 px-2.5">
+                                              <span className={`${statusColor} ${badgeCls}`}>
+                                                {statusText}
+                                              </span>
+                                            </td>
+                                          );
                                         }
-
                                         return (
-                                          <td key={col.key} className="py-1.5 px-2.5">
-                                            <span className={`${statusColor} ${badgeCls}`}>
-                                              {statusText}
-                                            </span>
+                                          <td key={col.key} className="py-1.5 px-2.5 text-slate-400">
+                                            —
                                           </td>
                                         );
                                       }

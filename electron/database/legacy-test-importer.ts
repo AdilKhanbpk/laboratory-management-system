@@ -28,37 +28,81 @@ export interface LegacyTestImportStats {
 
 /**
  * Searches common locations to find the legacy .bak SQLite database.
+ * Supports both development workspace and packaged installer / portable execution.
  */
 export function findCandidateLegacyBackup(customPath?: string): string | null {
   if (customPath && fs.existsSync(customPath)) {
     return customPath;
   }
 
-  const appRoot = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
-  const searchDirs = [
-    appRoot,
-    process.cwd(),
-    'd:\\LMS',
-    path.join(app.getPath('userData'), 'backups'),
-  ];
+  const appRoot = app && app.isPackaged ? path.dirname(process.execPath) : process.cwd();
+  const searchDirs: string[] = [];
 
-  // 1. Look for known 20261013130521.bak
-  for (const dir of searchDirs) {
-    if (!fs.existsSync(dir)) continue;
-    const directFile = path.join(dir, '20261013130521.bak');
-    if (fs.existsSync(directFile)) {
-      return directFile;
+  // 1. Packaged resources directories (NSIS installed app & portable release)
+  if (process.resourcesPath) {
+    searchDirs.push(path.join(process.resourcesPath, 'database', 'seeds'));
+    searchDirs.push(path.join(process.resourcesPath, 'database'));
+    searchDirs.push(process.resourcesPath);
+  }
+  searchDirs.push(path.join(appRoot, 'resources', 'database', 'seeds'));
+  searchDirs.push(path.join(appRoot, 'resources', 'database'));
+  searchDirs.push(path.join(appRoot, 'resources'));
+
+  // 2. Application root and local workspace directories
+  searchDirs.push(path.join(appRoot, 'database', 'seeds'));
+  searchDirs.push(path.join(appRoot, 'database'));
+  searchDirs.push(appRoot);
+  searchDirs.push(path.join(process.cwd(), 'database', 'seeds'));
+  searchDirs.push(path.join(process.cwd(), 'database'));
+  searchDirs.push(process.cwd());
+
+  // 3. Module bundle relative paths
+  searchDirs.push(path.join(__dirname, '../../database/seeds'));
+  searchDirs.push(path.join(__dirname, '../database/seeds'));
+  searchDirs.push(path.join(__dirname, 'database/seeds'));
+
+  // 4. AppData / UserData paths
+  if (app && app.getPath) {
+    try {
+      searchDirs.push(path.join(app.getPath('userData'), 'seeds'));
+      searchDirs.push(path.join(app.getPath('userData'), 'backups'));
+      searchDirs.push(app.getPath('userData'));
+    } catch {
+      // app not ready
     }
   }
 
-  // 2. Look for any *.bak in searchDirs
+  // 5. Fallback paths for known setup drives
+  searchDirs.push('d:\\LMS\\database\\seeds');
+  searchDirs.push('d:\\LMS');
+  searchDirs.push('c:\\LMS\\database\\seeds');
+  searchDirs.push('c:\\LMS');
+
+  const knownNames = [
+    '20261013130521.bak',
+    '20261013130521.BAK',
+    'legacy_tests_backup.bak',
+    'legacy_tests.bak',
+  ];
+
+  // Pass 1: Look for exact known file names in all candidate directories
   for (const dir of searchDirs) {
-    if (!fs.existsSync(dir)) continue;
+    if (!dir || !fs.existsSync(dir)) continue;
+    for (const name of knownNames) {
+      const full = path.join(dir, name);
+      if (fs.existsSync(full)) {
+        return full;
+      }
+    }
+  }
+
+  // Pass 2: Look for any *.bak or *.BAK in candidate directories
+  for (const dir of searchDirs) {
+    if (!dir || !fs.existsSync(dir)) continue;
     try {
       const files = fs.readdirSync(dir);
       const bakFiles = files.filter(f => f.toLowerCase().endsWith('.bak'));
       if (bakFiles.length > 0) {
-        // Return largest or latest .bak
         bakFiles.sort((a, b) => {
           const sA = fs.statSync(path.join(dir, a)).size;
           const sB = fs.statSync(path.join(dir, b)).size;

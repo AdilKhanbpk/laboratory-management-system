@@ -21,6 +21,8 @@ extraResources:
     to: database/migrations
   - from: database/seeds
     to: database/seeds
+  - from: 20261013130521.BAK
+    to: 20261013130521.bak
 
 win:
   target:
